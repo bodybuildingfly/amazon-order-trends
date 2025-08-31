@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Theme */
+    --color-primary: #2563EB;
+    --color-surface: #F8FAFC;
+    --color-background: #F1F5F9;
+    --color-text-primary: #0F172A;
+    --color-text-secondary: #475569;
+    --color-border-color: #CBD5E1;
+  }
+  html.dark {
+    /* Dark Theme */
+    --color-primary: #3B82F6;
+    --color-surface: #1E293B;
+    --color-background: #0F172A;
+    --color-text-primary: #F1F5F9;
+    --color-text-secondary: #94A3B8;
+    --color-border-color: #334155;
+  }
+  body {
+    @apply bg-background text-text-primary font-sans;
+  }
+}
