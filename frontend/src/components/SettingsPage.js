@@ -86,7 +86,10 @@ const SettingsPage = () => {
         setImportStatus('Connecting to server...');
         setImportProgress({ value: 0, max: 100 });
 
-        const url = `/api/ingestion/run?days=${importDays}&token=${user.token}`;
+        const baseUrl = process.env.NODE_ENV === 'production'
+            ? ''
+            : 'http://localhost:5001';
+        const url = `${baseUrl}/api/ingestion/run?days=${importDays}&token=${user.token}`;
         const eventSource = new EventSource(url);
         eventSourceRef.current = eventSource;
 

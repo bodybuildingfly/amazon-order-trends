@@ -152,8 +152,7 @@ def main(manual_days_override=None):
                     if not order or not order.items: continue
 
                     try:
-                        # --- CORRECTED LOGIC: Check subscription_discount directly, as per your working application ---
-                        is_sns_order = order.subscription_discount is not None and order.subscription_discount > 0
+                        is_sns_order = order.subscription_discount is not None
                         
                         cur.execute("""
                             INSERT INTO orders (order_id, order_placed_date, grand_total, subscription_discount, recipient_name)
