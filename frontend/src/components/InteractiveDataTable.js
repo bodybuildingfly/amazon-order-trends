@@ -1,115 +1,92 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-    useReactTable,
-    getCoreRowModel,
-    flexRender,
-} from '@tanstack/react-table';
-import { toast } from 'react-toastify';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useReactTable, getCoreRowModel, flexRender } from '@tanstack/react-table';
 import apiClient from '../api';
+import { toast } from 'react-toastify';
 
 // --- Helper Components ---
-const LoadingSpinner = () => (
-    <div className="flex items-center justify-center h-full py-10">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-    </div>
-);
+const Spinner = () => <div className="flex justify-center items-center p-10"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
 
-/**
- * @description A component that renders a fully-featured, server-side data table for items.
- */
 const InteractiveDataTable = () => {
     const [data, setData] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
-    
-    // Server-side state management
-    const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 15 });
-    const [sorting, setSorting] = useState([]);
-    const [globalFilter, setGlobalFilter] = useState('');
-    const [pageCount, setPageCount] = useState(0);
+    const [totalItems, setTotalItems] = useState(0);
+    const [isLoading, setIsLoading] = useState(true);
+    const [page, setPage] = useState(1);
+    const [limit] = useState(20);
+    const [sortBy, setSortBy] = useState('order_placed_date');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [filterText, setFilterText] = useState('');
+    const [inputValue, setInputValue] = useState('');
 
-    // Debounce the global filter input to avoid excessive API calls
-    const [debouncedFilter, setDebouncedFilter] = useState(globalFilter);
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const fetchData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const params = { page, limit, sortBy, sortOrder, filterText };
+            const { data: response } = await apiClient.get('/api/items', { params });
+            setData(response.data);
+            setTotalItems(response.total);
+        } catch (error) {
+            toast.error("Failed to fetch item data.");
+        }
+        setIsLoading(false);
+    }, [page, limit, sortBy, sortOrder, filterText]);
+
     useEffect(() => {
-        const handler = setTimeout(() => {
-            setDebouncedFilter(globalFilter);
-            setPagination(p => ({ ...p, pageIndex: 0 })); // Reset to first page on search
-        }, 500);
-        return () => clearTimeout(handler);
-    }, [globalFilter]);
+        const timeoutId = setTimeout(() => {
+            setFilterText(inputValue);
+            setPage(1); // Reset to first page on new search
+        }, 500); // Debounce search input
+        return () => clearTimeout(timeoutId);
+    }, [inputValue]);
 
-    // Fetch data from the API whenever pagination, sorting, or filtering changes
     useEffect(() => {
-        const fetchData = async () => {
-            setIsLoading(true);
-            try {
-                const params = new URLSearchParams({
-                    page: pagination.pageIndex + 1,
-                    limit: pagination.pageSize,
-                });
-
-                if (sorting.length > 0) {
-                    params.append('sortBy', sorting[0].id);
-                    params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc');
-                }
-
-                if (debouncedFilter) {
-                    params.append('filter[full_title]', debouncedFilter);
-                }
-                
-                const { data: responseData } = await apiClient.get(`/api/items?${params.toString()}`);
-
-                if (responseData && Array.isArray(responseData.data)) {
-                    setData(responseData.data);
-                    setPageCount(Math.ceil(responseData.total / pagination.pageSize));
-                }
-            } catch (error) {
-                toast.error("Failed to fetch item data.");
-                setData([]);
-                setPageCount(0);
-            } finally {
-                setIsLoading(false);
-            }
-        };
         fetchData();
-    }, [pagination, sorting, debouncedFilter]);
+    }, [fetchData]);
 
-    // Define table columns
+    const handleSort = (columnId) => {
+        if (sortBy === columnId) {
+            setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortBy(columnId);
+            setSortOrder('desc');
+        }
+        setPage(1); // Reset to first page on sort
+    };
+
     const columns = useMemo(() => [
         {
             accessorKey: 'full_title',
             header: 'Product Title',
-            cell: info => <div className="font-medium text-text-primary">{info.getValue()}</div>,
+            // UPDATED: Use a custom cell renderer to create a hyperlink
+            cell: ({ row }) => (
+                <a 
+                    href={row.original.link} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-medium"
+                    title={row.original.full_title}
+                >
+                    {row.original.full_title}
+                </a>
+            ),
         },
-        {
-            accessorKey: 'asin',
-            header: 'ASIN',
-            cell: info => <span className="font-mono text-sm">{info.getValue()}</span>,
-        },
-        {
-            accessorKey: 'price_per_unit',
+        { accessorKey: 'asin', header: 'ASIN' },
+        { 
+            accessorKey: 'price_per_unit', 
             header: 'Price',
-            cell: info => `$${parseFloat(info.getValue()).toFixed(2)}`,
+            cell: info => `$${parseFloat(info.getValue()).toFixed(2)}`
         },
-        {
-            accessorKey: 'order_placed_date',
+        { 
+            accessorKey: 'order_placed_date', 
             header: 'Purchase Date',
-            cell: info => new Date(info.getValue()).toLocaleDateString(),
+            cell: info => new Date(info.getValue()).toLocaleDateString()
         },
     ], []);
-    
-    // Initialize the table instance
+
     const table = useReactTable({
         data,
         columns,
-        pageCount,
-        state: {
-            pagination,
-            sorting,
-            globalFilter,
-        },
-        onPaginationChange: setPagination,
-        onSortingChange: setSorting,
-        onGlobalFilterChange: setGlobalFilter,
         getCoreRowModel: getCoreRowModel(),
         manualPagination: true,
         manualSorting: true,
@@ -117,85 +94,63 @@ const InteractiveDataTable = () => {
     });
 
     return (
-        <div className="bg-surface p-6 rounded-2xl shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-3xl font-semibold text-text-primary">All Purchased Items</h2>
+        <div className="bg-surface p-6 rounded-2xl shadow-lg h-full flex flex-col">
+            <h2 className="text-3xl font-semibold mb-4 text-text-primary">All Purchased Items</h2>
+            <div className="mb-4">
                 <input
                     type="text"
-                    value={globalFilter ?? ''}
-                    onChange={e => setGlobalFilter(e.target.value)}
-                    className="form-input w-full md:w-1/3"
-                    placeholder="Search all items..."
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="Search by title or date..."
+                    className="form-input"
                 />
             </div>
-            
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead>
-                        {table.getHeaderGroups().map(headerGroup => (
-                            <tr key={headerGroup.id}>
-                                {headerGroup.headers.map(header => (
-                                    <th 
-                                        key={header.id}
-                                        className="p-3 text-left text-sm font-semibold text-text-secondary uppercase tracking-wider border-b border-border-color cursor-pointer"
-                                        onClick={header.column.getToggleSortingHandler()}
-                                    >
-                                        {flexRender(header.column.columnDef.header, header.getContext())}
-                                        {{
-                                            asc: ' 🔼',
-                                            desc: ' 🔽',
-                                        }[header.column.getIsSorted()] ?? null}
-                                    </th>
-                                ))}
-                            </tr>
-                        ))}
-                    </thead>
-                    <tbody>
-                        {isLoading ? (
-                            <tr>
-                                <td colSpan={columns.length}>
-                                    <LoadingSpinner />
-                                </td>
-                            </tr>
-                        ) : table.getRowModel().rows.length > 0 ? (
-                            table.getRowModel().rows.map(row => (
-                                <tr key={row.id} className="hover:bg-surface-hover border-b border-border-color">
+            <div className="flex-grow overflow-auto">
+                {isLoading ? <Spinner /> : (
+                    <table className="w-full text-sm text-left text-text-secondary">
+                        <thead className="text-xs text-text-primary uppercase bg-surface-muted">
+                            {table.getHeaderGroups().map(headerGroup => (
+                                <tr key={headerGroup.id}>
+                                    {headerGroup.headers.map(header => (
+                                        <th key={header.id} scope="col" className="px-6 py-3">
+                                            <div
+                                                className="flex items-center cursor-pointer"
+                                                onClick={() => handleSort(header.column.id)}
+                                            >
+                                                {flexRender(header.column.columnDef.header, header.getContext())}
+                                                <span className="ml-2">
+                                                    {sortBy === header.column.id ? (sortOrder === 'asc' ? '🔼' : '🔽') : '↕️'}
+                                                </span>
+                                            </div>
+                                        </th>
+                                    ))}
+                                </tr>
+                            ))}
+                        </thead>
+                        <tbody>
+                            {table.getRowModel().rows.map(row => (
+                                <tr key={row.id} className="bg-surface border-b border-border-color hover:bg-surface-hover">
                                     {row.getVisibleCells().map(cell => (
-                                        <td key={cell.id} className="p-3 text-sm text-text-secondary">
+                                        <td key={cell.id} className="px-6 py-4">
                                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                         </td>
                                     ))}
                                 </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan={columns.length} className="text-center py-10 text-text-muted">
-                                    No items found.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
-
-            <div className="flex justify-between items-center mt-4">
-                <button
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                    className="form-button-secondary"
-                >
-                    Previous
-                </button>
+            <div className="flex justify-between items-center pt-4">
                 <span className="text-sm text-text-muted">
-                    Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                    Page {page} of {totalPages} ({totalItems} items)
                 </span>
-                <button
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                    className="form-button-secondary"
-                >
-                    Next
-                </button>
+                <div className="flex items-center space-x-2">
+                    <button onClick={() => setPage(1)} disabled={page === 1} className="form-button-secondary">First</button>
+                    <button onClick={() => setPage(p => p - 1)} disabled={page === 1} className="form-button-secondary">Prev</button>
+                    <button onClick={() => setPage(p => p + 1)} disabled={page === totalPages} className="form-button-secondary">Next</button>
+                    <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="form-button-secondary">Last</button>
+                </div>
             </div>
         </div>
     );

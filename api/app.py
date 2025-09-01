@@ -180,13 +180,11 @@ def save_settings():
 @app.route("/api/ingestion/run", methods=['GET'])
 @admin_required()
 def run_ingestion_route():
-    """Streams ingestion progress using Server-Sent Events (SSE)."""
     days = request.args.get('days', 60, type=int)
     
     def generate_events():
         app.logger.info(f"[SSE] Stream opened for ingestion run ({days} days).")
         try:
-            # Directly iterate over the ingestion generator
             for event_type, data in run_ingestion(manual_days_override=days):
                 event_data = json.dumps({"type": event_type, "payload": data})
                 yield f"data: {event_data}\n\n"
@@ -197,7 +195,6 @@ def run_ingestion_route():
         finally:
             app.logger.info("[SSE] Stream closed for ingestion run.")
             
-    # Add headers to prevent buffering
     response = Response(generate_events(), mimetype='text/event-stream')
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['X-Accel-Buffering'] = 'no'
@@ -213,47 +210,9 @@ def amazon_logout():
         app.logger.error(f"Amazon logout command failed: {e}", exc_info=True)
         return jsonify({"error": "Failed to execute Amazon logout command."}), 500
 
-@app.route("/api/products")
-@jwt_required()
-def get_products():
-    """Returns a list of unique products (ASIN and full title)."""
-    try:
-        with get_db_cursor() as cur:
-            cur.execute("""
-                SELECT DISTINCT ON (asin) asin, full_title
-                FROM items
-                WHERE asin IS NOT NULL AND full_title IS NOT NULL
-                ORDER BY asin, order_id DESC;
-            """)
-            products = [{"asin": row[0], "full_title": row[1]} for row in cur.fetchall()]
-        return jsonify(products)
-    except Exception as e:
-        app.logger.error(f"Failed to fetch products: {e}", exc_info=True)
-        return jsonify({"error": "Failed to fetch products"}), 500
-
-@app.route("/api/trends/<string:asin>")
-@jwt_required()
-def get_price_trends(asin):
-    """Returns a time-series of price history for a given ASIN."""
-    try:
-        with get_db_cursor() as cur:
-            cur.execute("""
-                SELECT o.order_placed_date, i.price_per_unit
-                FROM items i
-                JOIN orders o ON i.order_id = o.order_id
-                WHERE i.asin = %s
-                ORDER BY o.order_placed_date ASC;
-            """, (asin,))
-            trends = [{"date": row[0].isoformat(), "price": float(row[1])} for row in cur.fetchall()]
-        return jsonify(trends)
-    except Exception as e:
-        app.logger.error(f"Failed to fetch trends for ASIN {asin}: {e}", exc_info=True)
-        return jsonify({"error": "Failed to fetch price trends"}), 500
-
 @app.route("/api/items")
 @jwt_required()
 def get_all_items():
-    """Provides a paginated, sortable, and filterable list of all items."""
     page = request.args.get('page', 1, type=int)
     limit = request.args.get('limit', 20, type=int)
     offset = (page - 1) * limit
@@ -267,15 +226,15 @@ def get_all_items():
         sort_order = 'DESC'
     
     query = """
-        SELECT i.full_title, i.asin, i.price_per_unit, o.order_placed_date
+        SELECT i.full_title, i.link, i.asin, i.price_per_unit, o.order_placed_date
         FROM items i JOIN orders o ON i.order_id = o.order_id
     """
     count_query = "SELECT COUNT(*) FROM items i JOIN orders o ON i.order_id = o.order_id"
     params = []
     
     if filter_text:
-        query += " WHERE i.full_title ILIKE %s OR i.asin ILIKE %s"
-        count_query += " WHERE i.full_title ILIKE %s OR i.asin ILIKE %s"
+        query += " WHERE i.full_title ILIKE %s OR CAST(o.order_placed_date AS TEXT) ILIKE %s"
+        count_query += " WHERE i.full_title ILIKE %s OR CAST(o.order_placed_date AS TEXT) ILIKE %s"
         params.extend([f"%{filter_text}%", f"%{filter_text}%"])
 
     query += f" ORDER BY {sort_by} {sort_order} LIMIT %s OFFSET %s"
@@ -299,6 +258,50 @@ def get_all_items():
     except Exception as e:
         app.logger.error(f"Failed to fetch items: {e}", exc_info=True)
         return jsonify({"error": "Failed to fetch items"}), 500
+
+# --- NEW: Endpoint for Subscribe & Save items ---
+@app.route("/api/sns-items")
+@jwt_required()
+def get_sns_items():
+    """
+    Fetches all Subscribe & Save items, along with their previous order's
+    price and date for comparison.
+    """
+    query = """
+    WITH ranked_items AS (
+        SELECT
+            i.asin,
+            i.full_title,
+            i.link,
+            i.price_per_unit,
+            o.order_placed_date,
+            LAG(i.price_per_unit, 1) OVER (PARTITION BY i.asin ORDER BY o.order_placed_date) AS prev_price,
+            LAG(o.order_placed_date, 1) OVER (PARTITION BY i.asin ORDER BY o.order_placed_date) AS prev_date,
+            ROW_NUMBER() OVER (PARTITION BY i.asin ORDER BY o.order_placed_date DESC) as rn
+        FROM items i
+        JOIN orders o ON i.order_id = o.order_id
+        WHERE i.is_subscribe_and_save = TRUE AND i.asin IS NOT NULL
+    )
+    SELECT 
+        asin, 
+        full_title, 
+        link, 
+        price_per_unit, 
+        order_placed_date, 
+        prev_price, 
+        prev_date
+    FROM ranked_items
+    WHERE rn = 1
+    ORDER BY full_title;
+    """
+    try:
+        with get_db_cursor() as cur:
+            cur.execute(query)
+            items = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
+        return jsonify(items)
+    except Exception as e:
+        app.logger.error(f"Failed to fetch Subscribe & Save items: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch Subscribe & Save items"}), 500
 
 # --- Serve React App ---
 @app.route('/', defaults={'path': ''})

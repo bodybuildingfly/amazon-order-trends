@@ -5,11 +5,11 @@ import 'react-toastify/dist/ReactToastify.css';
 
 // --- Component & Context Imports ---
 import InteractiveDataTable from './components/InteractiveDataTable';
+import SnsDataTable from './components/SnsDataTable'; // Import the new component
 import LoginPage from './components/LoginPage';
-import PriceTrendGraph from './components/PriceTrendGraph';
 import SettingsPage from './components/SettingsPage';
-import MainLayout from './components/MainLayout'; // Import the new layout component
-import ProtectedRoute from './components/ProtectedRoute'; // Import the new protected route
+import MainLayout from './components/MainLayout';
+import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
 
 // --- Helper Components ---
@@ -24,12 +24,8 @@ const LoadingSpinner = () => (
  */
 function App() {
     const { isAuthenticated, isLoading } = useAuth();
-    
-    // --- LOGGING ---
-    console.log('[App.js] Rendering:', { isAuthenticated, isLoading });
 
     if (isLoading) {
-        console.log('[App.js] Showing loading spinner because isLoading is true.');
         return <LoadingSpinner />;
     }
 
@@ -37,24 +33,22 @@ function App() {
         <>
             <ToastContainer theme="colored" position="bottom-right" />
             <Routes>
-                {/* If authenticated and trying to access /login, redirect to the main app */}
                 <Route
                     path="/login"
                     element={isAuthenticated ? <Navigate to="/" /> : <LoginPage />}
                 />
-
-                {/* All other routes are protected */}
                 <Route
                     path="/*"
                     element={
                         <ProtectedRoute>
                             <MainLayout>
                                 <Routes>
-                                    <Route path="/trends" element={<PriceTrendGraph />} />
                                     <Route path="/table" element={<InteractiveDataTable />} />
+                                    {/* NEW: Route for the S&S table */}
+                                    <Route path="/sns-table" element={<SnsDataTable />} />
                                     <Route path="/settings" element={<SettingsPage />} />
                                     {/* Default route inside the main layout */}
-                                    <Route path="/" element={<Navigate to="/trends" replace />} />
+                                    <Route path="/" element={<Navigate to="/table" replace />} />
                                 </Routes>
                             </MainLayout>
                         </ProtectedRoute>
