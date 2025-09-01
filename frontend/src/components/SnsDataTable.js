@@ -6,6 +6,36 @@ import { toast } from 'react-toastify';
 // --- Helper Components ---
 const Spinner = () => <div className="flex justify-center items-center p-10"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
 
+const PriceWithIndicatorCell = ({ price, date, comparePrice }) => {
+    if (!price) return <span className="text-text-muted">N/A</span>;
+
+    const currentPrice = parseFloat(price);
+    const historicalPrice = parseFloat(comparePrice);
+    
+    let indicator = null;
+    if (comparePrice && !isNaN(historicalPrice)) {
+        const change = currentPrice - historicalPrice;
+        let colorClass = '';
+        if (change > 0) {
+            colorClass = 'text-danger';
+            indicator = <span className={`ml-2 font-bold ${colorClass}`}>▲</span>;
+        } else if (change < 0) {
+            colorClass = 'text-success';
+            indicator = <span className={`ml-2 font-bold ${colorClass}`}>▼</span>;
+        }
+    }
+
+    return (
+        <div>
+            <p className="font-semibold">
+                ${currentPrice.toFixed(2)}
+                {indicator}
+            </p>
+            <p className="text-xs text-text-muted">{new Date(date).toLocaleDateString()}</p>
+        </div>
+    );
+};
+
 /**
  * @description A component to display and compare Subscribe & Save item prices.
  */
@@ -46,53 +76,43 @@ const SnsDataTable = () => {
         },
         { accessorKey: 'asin', header: 'ASIN', size: 120 },
         { 
-            header: 'Recent Purchase',
+            header: 'Current',
             cell: ({ row }) => (
-                <div>
-                    <p className="font-semibold">${parseFloat(row.original.price_per_unit).toFixed(2)}</p>
-                    <p className="text-xs text-text-muted">{new Date(row.original.order_placed_date).toLocaleDateString()}</p>
-                </div>
-            )
-        },
-        { 
-            header: 'Previous Purchase',
-            cell: ({ row }) => (
-                row.original.prev_price ? (
-                    <div>
-                        <p className="font-semibold">${parseFloat(row.original.prev_price).toFixed(2)}</p>
-                        <p className="text-xs text-text-muted">{new Date(row.original.prev_date).toLocaleDateString()}</p>
-                    </div>
-                ) : <span className="text-text-muted">N/A</span>
+                <PriceWithIndicatorCell
+                    price={row.original.price_current}
+                    date={row.original.date_current}
+                    comparePrice={row.original.price_prev_1}
+                />
             )
         },
         {
-            header: 'Price Change',
-            cell: ({ row }) => {
-                const currentPrice = parseFloat(row.original.price_per_unit);
-                const prevPrice = parseFloat(row.original.prev_price);
-
-                if (!prevPrice) return <span className="text-text-muted">-</span>;
-
-                const change = currentPrice - prevPrice;
-                const percentageChange = ((change / prevPrice) * 100).toFixed(1);
-
-                let colorClass = 'text-text-muted';
-                let indicator = '▬';
-                if (change > 0) {
-                    colorClass = 'text-danger';
-                    indicator = '▲';
-                } else if (change < 0) {
-                    colorClass = 'text-success';
-                    indicator = '▼';
-                }
-
-                return (
-                    <div className={`font-bold text-center ${colorClass}`}>
-                        <span>{indicator} ${Math.abs(change).toFixed(2)}</span>
-                        <span className="text-xs ml-1">({percentageChange}%)</span>
-                    </div>
-                );
-            }
+            header: 'Previous Order',
+            cell: ({ row }) => (
+                <PriceWithIndicatorCell
+                    price={row.original.price_prev_1}
+                    date={row.original.date_prev_1}
+                    comparePrice={row.original.price_prev_2}
+                />
+            )
+        },
+        {
+            header: '2 Orders Ago',
+            cell: ({ row }) => (
+                <PriceWithIndicatorCell
+                    price={row.original.price_prev_2}
+                    date={row.original.date_prev_2}
+                    comparePrice={row.original.price_prev_3}
+                />
+            )
+        },
+        {
+            header: '3 Orders Ago',
+            cell: ({ row }) => (
+                <PriceWithIndicatorCell
+                    price={row.original.price_prev_3}
+                    date={row.original.date_prev_3}
+                />
+            )
         }
     ], []);
 

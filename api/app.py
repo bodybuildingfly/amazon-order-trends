@@ -276,14 +276,24 @@ def get_sns_items():
                     WHERE i.is_subscribe_and_save = TRUE AND i.asin IS NOT NULL
                 )
                 SELECT
-                    current.asin, current.full_title, current.link,
-                    current.price_per_unit AS current_price,
-                    current.order_placed_date AS current_date,
-                    previous.price_per_unit AS previous_price,
-                    previous.order_placed_date AS previous_date
-                FROM RankedItems current
-                LEFT JOIN RankedItems previous ON current.asin = previous.asin AND previous.rn = 2
-                WHERE current.rn = 1
+                    current.asin,
+                    current.full_title,
+                    current.link,
+                    current.price_per_unit AS price_current,
+                    current.order_placed_date AS date_current,
+                    p1.price_per_unit AS price_prev_1,
+                    p1.order_placed_date AS date_prev_1,
+                    p2.price_per_unit AS price_prev_2,
+                    p2.order_placed_date AS date_prev_2,
+                    p3.price_per_unit AS price_prev_3,
+                    p3.order_placed_date AS date_prev_3
+                FROM
+                    RankedItems current
+                LEFT JOIN RankedItems p1 ON current.asin = p1.asin AND p1.rn = 2
+                LEFT JOIN RankedItems p2 ON current.asin = p2.asin AND p2.rn = 3
+                LEFT JOIN RankedItems p3 ON current.asin = p3.asin AND p3.rn = 4
+                WHERE
+                    current.rn = 1 AND p1.asin IS NOT NULL
                 ORDER BY current.full_title;
             """)
             items = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
