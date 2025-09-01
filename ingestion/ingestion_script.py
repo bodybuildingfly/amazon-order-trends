@@ -161,13 +161,15 @@ def main(manual_days_override=None):
 
                         for item in order.items:
                             cur.execute("""
-                                INSERT INTO items (order_id, asin, full_title, link, quantity, price_per_unit, is_subscribe_and_save)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                INSERT INTO items (order_id, asin, full_title, link, thumbnail_url, quantity, price_per_unit, is_subscribe_and_save)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (order_id, full_title, price_per_unit) DO UPDATE SET
-                                    is_subscribe_and_save = EXCLUDED.is_subscribe_and_save;
+                                    is_subscribe_and_save = EXCLUDED.is_subscribe_and_save,
+                                    thumbnail_url = EXCLUDED.thumbnail_url;
                             """, (
                                 order.order_number, extract_asin(item.link), item.title,
                                 f"https://www.amazon.com{item.link}" if item.link else None,
+                                item.image_link,
                                 item.quantity or 1, item.price, is_sns_order
                             ))
                     except Exception as e:

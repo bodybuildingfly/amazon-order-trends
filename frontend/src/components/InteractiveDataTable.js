@@ -60,15 +60,24 @@ const InteractiveDataTable = () => {
             header: 'Product Title',
             // UPDATED: Use a custom cell renderer to create a hyperlink
             cell: ({ row }) => (
-                <a 
-                    href={row.original.link} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline font-medium"
-                    title={row.original.full_title}
-                >
-                    {row.original.full_title}
-                </a>
+                <div className="flex items-center space-x-3">
+                    <a href={row.original.link} target="_blank" rel="noopener noreferrer">
+                        <img 
+                            src={row.original.thumbnail_url} 
+                            alt={row.original.full_title}
+                            className="w-16 h-16 object-cover rounded-md"
+                        />
+                    </a>
+                    <a 
+                        href={row.original.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline font-medium"
+                        title={row.original.full_title}
+                    >
+                        {row.original.full_title}
+                    </a>
+                </div>
             ),
         },
         { accessorKey: 'asin', header: 'ASIN' },

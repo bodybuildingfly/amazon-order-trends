@@ -228,7 +228,7 @@ def get_all_items():
         sort_order = 'DESC'
     
     query = """
-        SELECT i.full_title, i.link, i.asin, i.price_per_unit, o.order_placed_date
+        SELECT i.full_title, i.link, i.thumbnail_url, i.asin, i.price_per_unit, o.order_placed_date
         FROM items i JOIN orders o ON i.order_id = o.order_id
     """
     count_query = "SELECT COUNT(*) FROM items i JOIN orders o ON i.order_id = o.order_id"
@@ -269,7 +269,7 @@ def get_sns_items():
             cur.execute("""
                 WITH RankedItems AS (
                     SELECT
-                        i.asin, i.full_title, i.link, i.price_per_unit, o.order_placed_date,
+                        i.asin, i.full_title, i.link, i.thumbnail_url, i.price_per_unit, o.order_placed_date,
                         ROW_NUMBER() OVER(PARTITION BY i.asin ORDER BY o.order_placed_date DESC) as rn
                     FROM items i
                     JOIN orders o ON i.order_id = o.order_id
@@ -279,6 +279,7 @@ def get_sns_items():
                     current.asin,
                     current.full_title,
                     current.link,
+                    current.thumbnail_url,
                     current.price_per_unit AS price_current,
                     current.order_placed_date AS date_current,
                     p1.price_per_unit AS price_prev_1,

@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS items (
     asin VARCHAR(20),
     full_title TEXT NOT NULL,
     link TEXT,
+    thumbnail_url TEXT,
     quantity INTEGER NOT NULL,
     price_per_unit NUMERIC(10, 2) NOT NULL,
     is_subscribe_and_save BOOLEAN DEFAULT FALSE,

@@ -19,6 +19,7 @@
     --color-danger: #DC2626; /* red-600 */
     --color-danger-hover: #B91C1C; /* red-700 */
     --color-danger-text: #b91c1c; /* red-700 */
+    --color-success: #16A34A; /* green-600 */
     --color-background: #F1F5F9; /* slate-100 */
     --color-surface: #F8FAFC; /* slate-50 */
     --color-surface-hover: #E2E8F0; /* slate-200 */
@@ -40,6 +41,7 @@
     --color-danger: #EF4444; /* red-500 */
     --color-danger-hover: #DC2626; /* red-600 */
     --color-danger-text: #FEE2E2; /* red-100 */
+    --color-success: #22C55E; /* green-500 */
     --color-background: #0F172A; /* slate-900 */
     --color-surface: #1E293B; /* slate-800 */
     --color-surface-hover: #334155; /* slate-700 */

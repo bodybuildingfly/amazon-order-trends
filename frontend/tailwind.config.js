@@ -12,6 +12,7 @@ module.exports = {
         secondary: 'var(--color-secondary)',
         'secondary-hover': 'var(--color-secondary-hover)',
         'secondary-text': 'var(--color-secondary-text)',
+        success: 'var(--color-success)',
         danger: 'var(--color-danger)',
         'danger-hover': 'var(--color-danger-hover)',
         'danger-text': 'var(--color-danger-text)',
