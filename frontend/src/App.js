@@ -8,6 +8,7 @@ import InteractiveDataTable from './components/InteractiveDataTable';
 import SnsDataTable from './components/SnsDataTable'; // Import the new component
 import LoginPage from './components/LoginPage';
 import SettingsPage from './components/SettingsPage';
+import UserManagementPage from './components/UserManagementPage';
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
@@ -23,7 +24,7 @@ const LoadingSpinner = () => (
  * @description The root component that handles routing.
  */
 function App() {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, user } = useAuth();
 
     if (isLoading) {
         return <LoadingSpinner />;
@@ -44,9 +45,11 @@ function App() {
                             <MainLayout>
                                 <Routes>
                                     <Route path="/table" element={<InteractiveDataTable />} />
-                                    {/* NEW: Route for the S&S table */}
                                     <Route path="/sns-table" element={<SnsDataTable />} />
                                     <Route path="/settings" element={<SettingsPage />} />
+                                    {user?.role === 'admin' && (
+                                        <Route path="/user-management" element={<UserManagementPage />} />
+                                    )}
                                     {/* Default route inside the main layout */}
                                     <Route path="/" element={<Navigate to="/table" replace />} />
                                 </Routes>

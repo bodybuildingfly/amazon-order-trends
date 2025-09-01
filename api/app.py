@@ -111,8 +111,98 @@ def login():
     
     return jsonify({"msg": "Bad username or password"}), 401
 
-@app.route('/api/settings', methods=['GET'])
+
+# --- User Management Endpoints ---
+
+@app.route("/api/users", methods=['GET'])
 @admin_required()
+def get_users():
+    """Returns a list of all users."""
+    try:
+        with get_db_cursor() as cur:
+            cur.execute("SELECT id, username, role, created_at FROM users ORDER BY username")
+            users = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
+        return jsonify(users)
+    except Exception as e:
+        app.logger.error(f"Failed to fetch users: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch users."}), 500
+
+@app.route("/api/users", methods=['POST'])
+@admin_required()
+def add_user():
+    """Adds a new user to the database."""
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'user')
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required."}), 400
+    if role not in ['admin', 'user']:
+        return jsonify({"error": "Invalid role specified."}), 400
+
+    hashed_password = generate_password_hash(password)
+    try:
+        with get_db_cursor(commit=True) as cur:
+            cur.execute(
+                "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, %s) RETURNING id, created_at",
+                (username, hashed_password, role)
+            )
+            new_user = cur.fetchone()
+            return jsonify({
+                "id": new_user[0],
+                "username": username,
+                "role": role,
+                "created_at": new_user[1]
+            }), 201
+    except Exception as e:
+        app.logger.error(f"Failed to add user '{username}': {e}", exc_info=True)
+        # Unique constraint violation error code for psycopg2
+        if hasattr(e, 'pgcode') and e.pgcode == '23505':
+            return jsonify({"error": f"Username '{username}' already exists."}), 409
+        return jsonify({"error": "Failed to create user."}), 500
+
+@app.route("/api/users/<uuid:user_id>/reset-password", methods=['POST'])
+@admin_required()
+def reset_password(user_id):
+    """Resets a user's password."""
+    data = request.get_json()
+    password = data.get('password')
+
+    if not password:
+        return jsonify({"error": "Password is required."}), 400
+
+    hashed_password = generate_password_hash(password)
+    try:
+        with get_db_cursor(commit=True) as cur:
+            cur.execute("UPDATE users SET hashed_password = %s WHERE id = %s", (hashed_password, user_id))
+            if cur.rowcount == 0:
+                return jsonify({"error": "User not found."}), 404
+        return jsonify({"message": "Password has been reset successfully."})
+    except Exception as e:
+        app.logger.error(f"Failed to reset password for user {user_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to reset password."}), 500
+
+@app.route("/api/users/<uuid:user_id>", methods=['DELETE'])
+@admin_required()
+def delete_user(user_id):
+    """Deletes a user from the database."""
+    current_user_id = get_jwt_identity()
+    if str(user_id) == current_user_id:
+        return jsonify({"error": "You cannot delete your own account."}), 400
+
+    try:
+        with get_db_cursor(commit=True) as cur:
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            if cur.rowcount == 0:
+                return jsonify({"error": "User not found."}), 404
+        return jsonify({"message": "User deleted successfully."})
+    except Exception as e:
+        app.logger.error(f"Failed to delete user {user_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to delete user."}), 500
+
+@app.route('/api/settings', methods=['GET'])
+@jwt_required()
 def get_settings():
     try:
         current_user_id = get_jwt_identity()
@@ -141,7 +231,7 @@ def get_settings():
         return jsonify({"error": "Failed to retrieve settings."}), 500
 
 @app.route('/api/settings', methods=['POST'])
-@admin_required()
+@jwt_required()
 def save_settings():
     data = request.get_json()
     current_user_id = get_jwt_identity()
@@ -180,14 +270,15 @@ def save_settings():
         return jsonify({"error": "Failed to save settings."}), 500
 
 @app.route("/api/ingestion/run", methods=['GET'])
-@admin_required()
+@jwt_required()
 def run_ingestion_route():
     days = request.args.get('days', 60, type=int)
-    
+    current_user_id = get_jwt_identity()
+
     def generate_events():
-        app.logger.info(f"[SSE] Stream opened for ingestion run ({days} days).")
+        app.logger.info(f"[SSE] Stream opened for ingestion run for user {current_user_id} ({days} days).")
         try:
-            for event_type, data in run_ingestion_generator(manual_days_override=days):
+            for event_type, data in run_ingestion_generator(user_id=current_user_id, manual_days_override=days):
                 event_data = json.dumps({"type": event_type, "payload": data})
                 yield f"data: {event_data}\n\n"
         except Exception as e:
@@ -221,34 +312,43 @@ def get_all_items():
     sort_by = request.args.get('sortBy', 'order_placed_date')
     sort_order = request.args.get('sortOrder', 'desc').upper()
     filter_text = request.args.get('filterText', '')
+    current_user_id = get_jwt_identity()
 
     valid_sort_columns = {'full_title', 'asin', 'price_per_unit', 'order_placed_date'}
     if sort_by not in valid_sort_columns or sort_order not in ['ASC', 'DESC']:
         sort_by = 'order_placed_date'
         sort_order = 'DESC'
-    
-    query = """
-        SELECT i.full_title, i.link, i.thumbnail_url, i.asin, i.price_per_unit, o.order_placed_date
-        FROM items i JOIN orders o ON i.order_id = o.order_id
-    """
-    count_query = "SELECT COUNT(*) FROM items i JOIN orders o ON i.order_id = o.order_id"
-    params = []
-    
+
+    # Base query components
+    query_from = "FROM items i JOIN orders o ON i.order_id = o.order_id"
+    # Filter by the current user
+    query_where = "WHERE o.user_id = %s"
+    params = [current_user_id]
+
+    # Add text filter if provided
     if filter_text:
-        query += " WHERE i.full_title ILIKE %s OR CAST(o.order_placed_date AS TEXT) ILIKE %s"
-        count_query += " WHERE i.full_title ILIKE %s OR CAST(o.order_placed_date AS TEXT) ILIKE %s"
+        query_where += " AND (i.full_title ILIKE %s OR CAST(o.order_placed_date AS TEXT) ILIKE %s)"
         params.extend([f"%{filter_text}%", f"%{filter_text}%"])
 
-    query += f" ORDER BY {sort_by} {sort_order} LIMIT %s OFFSET %s"
-    
+    # Construct the final queries
+    query = f"""
+        SELECT i.full_title, i.link, i.thumbnail_url, i.asin, i.price_per_unit, o.order_placed_date
+        {query_from}
+        {query_where}
+        ORDER BY {sort_by} {sort_order}
+        LIMIT %s OFFSET %s
+    """
+    count_query = f"SELECT COUNT(*) {query_from} {query_where}"
+
     try:
         with get_db_cursor() as cur:
-            count_params = params.copy()
-            cur.execute(count_query, count_params)
+            # Execute count query
+            cur.execute(count_query, params)
             total_items = cur.fetchone()[0]
             
-            params.extend([limit, offset])
-            cur.execute(query, params)
+            # Execute data query
+            data_params = params + [limit, offset]
+            cur.execute(query, data_params)
             items = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
 
         return jsonify({
@@ -264,6 +364,7 @@ def get_all_items():
 @app.route('/api/sns-items')
 @jwt_required()
 def get_sns_items():
+    current_user_id = get_jwt_identity()
     try:
         with get_db_cursor() as cur:
             cur.execute("""
@@ -273,7 +374,7 @@ def get_sns_items():
                         ROW_NUMBER() OVER(PARTITION BY i.asin ORDER BY o.order_placed_date DESC) as rn
                     FROM items i
                     JOIN orders o ON i.order_id = o.order_id
-                    WHERE i.is_subscribe_and_save = TRUE AND i.asin IS NOT NULL
+                    WHERE i.is_subscribe_and_save = TRUE AND i.asin IS NOT NULL AND o.user_id = %s
                 )
                 SELECT
                     current.asin,
@@ -296,7 +397,7 @@ def get_sns_items():
                 WHERE
                     current.rn = 1 AND p1.asin IS NOT NULL
                 ORDER BY current.full_title;
-            """)
+            """, (current_user_id,))
             items = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
         return jsonify(items)
     except Exception as e:

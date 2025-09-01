@@ -42,21 +42,17 @@ def decrypt_value(encrypted_bytes):
         raise TypeError("Encrypted value must be in bytes or memoryview format.")
     return fernet.decrypt(bytes(encrypted_bytes)).decode('utf-8')
 
-def get_settings():
-    """Fetches, validates, and decrypts settings for the admin user."""
-    logger.info("Fetching settings for ingestion script...")
+def get_settings(user_id):
+    """Fetches, validates, and decrypts settings for a given user."""
+    logger.info(f"Fetching settings for user_id: {user_id}...")
     with get_db_cursor() as cur:
-        cur.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
-        admin_user = cur.fetchone()
-        if not admin_user: raise ValueError("No admin user found.")
-        
         cur.execute(
             "SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key FROM user_settings WHERE user_id = %s",
-            (admin_user[0],)
+            (user_id,)
         )
         settings_row = cur.fetchone()
 
-    if not settings_row: raise ValueError("Settings not found for the admin user.")
+    if not settings_row: raise ValueError(f"Settings not found for user {user_id}.")
     amazon_email, encrypted_password, amazon_otp_secret_key = settings_row
     if not amazon_email or not encrypted_password: raise ValueError("Amazon credentials are not fully configured.")
 
@@ -73,14 +69,15 @@ def extract_asin(url):
     match = re.search(r'/(dp|gp/product)/(\w{10})', url)
     return match.group(2) if match else None
 
-def main(manual_days_override=None):
+def main(user_id, manual_days_override=None):
     """
     Generator function to run the ingestion process and yield progress events.
+    :param user_id: The UUID of the user for whom to run ingestion.
     :param manual_days_override: An integer specifying the number of days to fetch.
     """
     try:
         initialize_fernet()
-        settings = get_settings()
+        settings = get_settings(user_id)
         
         days_to_fetch = 0
         if manual_days_override is not None:
@@ -155,9 +152,9 @@ def main(manual_days_override=None):
                         is_sns_order = order.subscription_discount is not None
                         
                         cur.execute("""
-                            INSERT INTO orders (order_id, order_placed_date, grand_total, subscription_discount, recipient_name)
-                            VALUES (%s, %s, %s, %s, %s) ON CONFLICT (order_id) DO NOTHING;
-                        """, (order.order_number, order.order_placed_date, order.grand_total, order.subscription_discount, order.recipient.name if order.recipient else None))
+                            INSERT INTO orders (order_id, user_id, order_placed_date, grand_total, subscription_discount, recipient_name)
+                            VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (order_id) DO NOTHING;
+                        """, (order.order_number, user_id, order.order_placed_date, order.grand_total, order.subscription_discount, order.recipient.name if order.recipient else None))
 
                         for item in order.items:
                             cur.execute("""
@@ -208,7 +205,16 @@ if __name__ == "__main__":
             print(f"STATUS: {payload}")
 
     try:
-        for event, payload in main(manual_days_override=args.days):
+        # For standalone script execution, we default to the admin user.
+        with get_db_cursor() as cursor:
+            cursor.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
+            admin = cursor.fetchone()
+            if not admin:
+                print("ERROR: No admin user found. Cannot run ingestion.", file=sys.stderr)
+                sys.exit(1)
+            admin_id = admin[0]
+            
+        for event, payload in main(user_id=admin_id, manual_days_override=args.days):
              console_progress_callback(event, payload)
     except Exception as e:
         print(f"Script failed with a critical error: {e}", file=sys.stderr)

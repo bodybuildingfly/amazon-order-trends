@@ -28,11 +28,16 @@ CREATE TABLE IF NOT EXISTS user_settings (
 -- Table to store high-level order information
 CREATE TABLE IF NOT EXISTS orders (
     order_id VARCHAR(50) PRIMARY KEY,
+    user_id UUID NOT NULL,
     order_placed_date DATE NOT NULL,
     grand_total NUMERIC(10, 2) NOT NULL,
     subscription_discount NUMERIC(10, 2),
     recipient_name VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_orders_user
+        FOREIGN KEY(user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
 );
 
 -- Table to store individual items within each order
@@ -51,4 +56,3 @@ CREATE TABLE IF NOT EXISTS items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_asin ON items(asin);
-
