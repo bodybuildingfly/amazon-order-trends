@@ -80,7 +80,6 @@ const InteractiveDataTable = () => {
                 </div>
             ),
         },
-        { accessorKey: 'asin', header: 'ASIN' },
         { 
             accessorKey: 'price_per_unit', 
             header: 'Price',

@@ -5,7 +5,7 @@ import 'react-toastify/dist/ReactToastify.css';
 
 // --- Component & Context Imports ---
 import InteractiveDataTable from './components/InteractiveDataTable';
-import SnsDataTable from './components/SnsDataTable'; // Import the new component
+import RepeatOrdersTable from './components/RepeatOrdersTable'; // Import the new component
 import LoginPage from './components/LoginPage';
 import SettingsPage from './components/SettingsPage';
 import UserManagementPage from './components/UserManagementPage';
@@ -45,7 +45,7 @@ function App() {
                             <MainLayout>
                                 <Routes>
                                     <Route path="/table" element={<InteractiveDataTable />} />
-                                    <Route path="/sns-table" element={<SnsDataTable />} />
+                                    <Route path="/repeat-orders" element={<RepeatOrdersTable />} />
                                     <Route path="/settings" element={<SettingsPage />} />
                                     {user?.role === 'admin' && (
                                         <Route path="/user-management" element={<UserManagementPage />} />

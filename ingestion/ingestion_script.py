@@ -149,7 +149,7 @@ def main(user_id, manual_days_override=None):
                     if not order or not order.items: continue
 
                     try:
-                        is_sns_order = order.subscription_discount is not None
+                        is_subscribe_and_save_order = order.subscription_discount is not None
                         
                         cur.execute("""
                             INSERT INTO orders (order_id, user_id, order_placed_date, grand_total, subscription_discount, recipient_name)
@@ -167,7 +167,7 @@ def main(user_id, manual_days_override=None):
                                 order.order_number, extract_asin(item.link), item.title,
                                 f"https://www.amazon.com{item.link}" if item.link else None,
                                 item.image_link,
-                                item.quantity or 1, item.price, is_sns_order
+                                item.quantity or 1, item.price, is_subscribe_and_save_order
                             ))
                     except Exception as e:
                         logger.error(f"Failed to process order {order.order_number} in DB: {e}", exc_info=True)
@@ -219,4 +219,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Script failed with a critical error: {e}", file=sys.stderr)
         sys.exit(1)
-

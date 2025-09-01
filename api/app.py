@@ -361,9 +361,9 @@ def get_all_items():
         app.logger.error(f"Failed to fetch items: {e}", exc_info=True)
         return jsonify({"error": "Failed to fetch items"}), 500
 
-@app.route('/api/sns-items')
+@app.route('/api/repeat-items')
 @jwt_required()
-def get_sns_items():
+def get_repeat_items():
     current_user_id = get_jwt_identity()
     try:
         with get_db_cursor() as cur:
@@ -371,16 +371,18 @@ def get_sns_items():
                 WITH RankedItems AS (
                     SELECT
                         i.asin, i.full_title, i.link, i.thumbnail_url, i.price_per_unit, o.order_placed_date,
+                        i.is_subscribe_and_save,
                         ROW_NUMBER() OVER(PARTITION BY i.asin ORDER BY o.order_placed_date DESC) as rn
                     FROM items i
                     JOIN orders o ON i.order_id = o.order_id
-                    WHERE i.is_subscribe_and_save = TRUE AND i.asin IS NOT NULL AND o.user_id = %s
+                    WHERE i.asin IS NOT NULL AND o.user_id = %s
                 )
                 SELECT
                     current.asin,
                     current.full_title,
                     current.link,
                     current.thumbnail_url,
+                    current.is_subscribe_and_save,
                     current.price_per_unit AS price_current,
                     current.order_placed_date AS date_current,
                     p1.price_per_unit AS price_prev_1,
@@ -401,8 +403,10 @@ def get_sns_items():
             items = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
         return jsonify(items)
     except Exception as e:
-        app.logger.error(f"Failed to fetch S&S items: {e}", exc_info=True)
-        return jsonify({"error": "Failed to fetch Subscribe & Save items."}), 500
+        app.logger.error(f"Failed to fetch repeat items: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch repeat items."}), 500
+
+
 
 # --- Serve React App ---
 @app.route('/', defaults={'path': ''})

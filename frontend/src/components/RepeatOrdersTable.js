@@ -37,19 +37,19 @@ const PriceWithIndicatorCell = ({ price, date, comparePrice }) => {
 };
 
 /**
- * @description A component to display and compare Subscribe & Save item prices.
+ * @description A component to display and compare repeat purchase item prices.
  */
-const SnsDataTable = () => {
+const RepeatOrdersTable = () => {
     const [data, setData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const { data: response } = await apiClient.get('/api/sns-items');
+            const { data: response } = await apiClient.get('/api/repeat-items');
             setData(response);
         } catch (error) {
-            toast.error("Failed to fetch Subscribe & Save item data.");
+            toast.error("Failed to fetch repeat purchase item data.");
         }
         setIsLoading(false);
     }, []);
@@ -83,7 +83,20 @@ const SnsDataTable = () => {
                 </div>
             ),
         },
-        { accessorKey: 'asin', header: 'ASIN', size: 120 },
+        {
+            accessorKey: 'is_subscribe_and_save',
+            header: 'Subscribe & Save',
+            size: 100,
+            cell: ({ getValue }) => (
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    getValue()
+                        ? 'bg-success-muted text-success'
+                        : 'bg-surface-hover text-text-muted'
+                }`}>
+                    {getValue() ? 'Yes' : 'No'}
+                </span>
+            )
+        },
         { 
             header: 'Current',
             cell: ({ row }) => (
@@ -134,7 +147,7 @@ const SnsDataTable = () => {
     return (
         <div className="bg-surface p-6 rounded-2xl shadow-lg h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-3xl font-semibold text-text-primary">Subscribe & Save History</h2>
+                <h2 className="text-3xl font-semibold text-text-primary">Repeat Orders</h2>
                 <button onClick={fetchData} disabled={isLoading} className="form-button-secondary">
                     {isLoading ? 'Refreshing...' : 'Refresh'}
                 </button>
@@ -143,8 +156,8 @@ const SnsDataTable = () => {
                 {isLoading ? <Spinner /> : (
                     data.length === 0 ? (
                         <div className="text-center p-10 text-text-muted">
-                            <h3 className="text-xl font-semibold">No Subscribe & Save Items Found</h3>
-                            <p className="mt-2">This table will populate once your imported orders include items from Subscribe & Save.</p>
+                            <h3 className="text-xl font-semibold">No Repeat Orders Found</h3>
+                            <p className="mt-2">This table will populate with items that have been purchased more than once.</p>
                         </div>
                     ) : (
                         <table className="w-full text-sm text-left text-text-secondary">
@@ -178,5 +191,5 @@ const SnsDataTable = () => {
     );
 };
 
-export default SnsDataTable;
+export default RepeatOrdersTable;
 
