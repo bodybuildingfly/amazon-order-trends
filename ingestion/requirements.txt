@@ -2,4 +2,3 @@ psycopg2-binary
 python-dotenv
 cryptography
 amazon-orders
-requests

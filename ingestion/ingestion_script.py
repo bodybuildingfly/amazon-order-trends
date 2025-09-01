@@ -3,23 +3,26 @@ import os
 import sys
 import logging
 import re
-import json
-import requests
-import hashlib
 import base64
+import hashlib
+import time
+import argparse
 from datetime import date, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from cryptography.fernet import Fernet
 from amazonorders.session import AmazonSession
 from amazonorders.orders import AmazonOrders
+from amazonorders.transactions import AmazonTransactions
 from amazonorders.exception import AmazonOrdersError
+from dotenv import load_dotenv
 
-# Add the project root to the Python path to allow importing from 'shared'
+# Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from shared.db import get_db_cursor
+from shared.db import get_db_cursor, init_pool as init_db_pool
 
-# --- Basic Logging Configuration ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Use a named logger for better context
+logger = logging.getLogger(__name__)
 
 # --- Global Fernet instance for Encryption/Decryption ---
 fernet = None
@@ -27,200 +30,206 @@ fernet = None
 def initialize_fernet():
     """Initializes the global Fernet instance using the encryption key."""
     global fernet
+    if fernet:
+        return
+    logger.info("Initializing Fernet for decryption...")
     encryption_key = os.environ.get('ENCRYPTION_KEY')
     if not encryption_key:
         raise ValueError("ENCRYPTION_KEY is not set in the environment variables.")
-    
-    # Derive a 32-byte key suitable for Fernet
     key_digest = hashlib.sha256(encryption_key.encode('utf-8')).digest()
     derived_key = base64.urlsafe_b64encode(key_digest)
     fernet = Fernet(derived_key)
 
-def decrypt_value(encrypted_value):
-    """Decrypts a value using the global Fernet instance."""
-    if not fernet:
-        initialize_fernet()
-    return fernet.decrypt(bytes(encrypted_value)).decode()
+def decrypt_value(encrypted_bytes):
+    """Decrypts a byte string using the global Fernet instance."""
+    if not isinstance(encrypted_bytes, bytes):
+        raise TypeError("Encrypted value must be in bytes format for decryption.")
+    return fernet.decrypt(encrypted_bytes).decode('utf-8')
 
 def get_settings():
-    """Fetches and decrypts settings from the database."""
-    settings = {}
-    required_keys = ['AMAZON_EMAIL', 'AMAZON_PASSWORD', 'OLLAMA_URL', 'OLLAMA_MODEL']
-    
-    logging.info("Fetching application settings from the database...")
+    """Fetches, validates, and decrypts settings for the admin user."""
+    logger.info("Fetching settings for ingestion script...")
     with get_db_cursor() as cur:
-        cur.execute("SELECT key, value, is_encrypted FROM settings")
-        db_settings = cur.fetchall()
-
-    settings_map = {row[0]: (row[1], row[2]) for row in db_settings}
-
-    for key in required_keys:
-        if key not in settings_map:
-            raise ValueError(f"Required setting '{key}' not found in the database.")
+        cur.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
+        admin_user = cur.fetchone()
+        if not admin_user:
+            raise ValueError("Critical: No admin user found in the database.")
+        admin_user_id = admin_user[0]
         
-        value, is_encrypted = settings_map[key]
-        if is_encrypted:
-            settings[key] = decrypt_value(value)
-        else:
-            settings[key] = value
+        cur.execute(
+            "SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key FROM user_settings WHERE user_id = %s",
+            (admin_user_id,)
+        )
+        settings_row = cur.fetchone()
 
-    # Optional key
-    if 'AMAZON_OTP_SECRET_KEY' in settings_map:
-        settings['AMAZON_OTP_SECRET_KEY'] = settings_map['AMAZON_OTP_SECRET_KEY'][0]
+    if not settings_row:
+        raise ValueError("Settings not found for the admin user. Please save settings on the Settings page.")
     
-    logging.info("Successfully loaded settings.")
+    amazon_email, encrypted_password, amazon_otp_secret_key = settings_row
+
+    if not amazon_email:
+        raise ValueError("Amazon Email is not configured in settings.")
+    if not encrypted_password:
+        raise ValueError("Amazon Password is not configured in settings.")
+
+    decrypted_password = decrypt_value(bytes(encrypted_password))
+    
+    settings = {
+        'AMAZON_EMAIL': amazon_email,
+        'AMAZON_PASSWORD': decrypted_password,
+        'AMAZON_OTP_SECRET_KEY': amazon_otp_secret_key or None
+    }
+    
+    logger.info("Successfully loaded and decrypted settings for ingestion.")
     return settings
 
 def extract_asin(url):
     """Extracts the ASIN from an Amazon product URL."""
-    if not url:
-        return None
+    if not url: return None
     match = re.search(r'/(dp|gp/product)/(\w{10})', url)
     return match.group(2) if match else None
 
-def summarize_titles_bulk(titles, ollama_url, model_name):
-    """Summarizes a list of product titles in batches using Ollama."""
-    if not titles:
-        return {}
-
-    unique_titles = list(dict.fromkeys(titles))
-    logging.info(f"Summarizing {len(unique_titles)} unique titles...")
-    
-    all_summaries = {}
-    batch_size = 10
-    num_batches = (len(unique_titles) + batch_size - 1) // batch_size
-    
-    for i in range(num_batches):
-        batch_titles = unique_titles[i*batch_size : (i+1)*batch_size]
-        logging.info(f"Processing batch {i+1} of {num_batches}...")
-
-        prompt = f"""
-        You are an expert product catalog summarizer. Your goal is to create a very short, human-readable summary for each product title provided. The summary must be strictly between 3 and 5 words.
-
-        CRITICAL INSTRUCTIONS:
-        1. Your output MUST be a single, valid JSON object.
-        2. The JSON object must have a key for EVERY product title from the input list.
-        3. The value for each key must be the new, summarized title.
-
-        RULES:
-        - Identify Core Product & Brand.
-        - Combine and Refine (e.g., "Elmer's Clear Craft Glue").
-        - Strictly Exclude sizes, weights, counts, marketing claims, and model numbers.
-
-        Titles to Summarize:
-        {json.dumps(batch_titles, indent=2)}
-        """
-
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "format": "json"
-        }
-
+def fetch_order_with_retries(order_num, amazon_orders_instance):
+    """Fetches a single order with retry logic."""
+    MAX_RETRIES = 3
+    RETRY_DELAY = 2
+    for attempt in range(MAX_RETRIES):
         try:
-            response = requests.post(ollama_url, json=payload, timeout=90)
-            response.raise_for_status()
-            response_json = json.loads(response.json().get("message", {}).get("content", "{}"))
-            all_summaries.update(response_json)
-        except (requests.RequestException, json.JSONDecodeError) as e:
-            logging.error(f"Failed to summarize batch {i+1}: {e}. Using original titles as fallback for this batch.")
-            for title in batch_titles:
-                all_summaries[title] = title
+            return amazon_orders_instance.get_order(order_id=order_num)
+        except Exception as e:
+            logger.warning(f"Attempt {attempt + 1} for order {order_num} failed: {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY)
+            else:
+                logger.error(f"All retries failed for order {order_num}.")
+                return e
 
-    return all_summaries
-
-def main():
-    """Main function to run the ingestion process."""
+def main(manual_days_override=None):
+    """Main generator function to run the ingestion process and yield progress."""
     try:
+        initialize_fernet()
         settings = get_settings()
         
-        # Determine the date range for fetching orders
-        with get_db_cursor() as cur:
-            cur.execute("SELECT MAX(order_placed_date) FROM orders")
-            last_order_date = cur.fetchone()[0]
-
-        if last_order_date:
-            start_date = last_order_date + timedelta(days=1)
-            logging.info(f"Found existing data. Fetching new orders from {start_date.isoformat()} to today.")
-        else:
-            start_date = date.today() - timedelta(days=365)
-            logging.info("No existing data found. Fetching orders for the last year.")
+        days_to_fetch = 0
         
-        end_date = date.today()
+        if manual_days_override is not None:
+            days_to_fetch = manual_days_override
+            yield "status", f"Manual override: Fetching last {days_to_fetch} days."
+        else:
+            with get_db_cursor() as cur:
+                cur.execute("SELECT MAX(order_placed_date) FROM orders")
+                last_order_date = cur.fetchone()[0]
+            if last_order_date:
+                days_to_fetch = (date.today() - last_order_date).days
+                yield "status", f"Incremental update: Fetching last {days_to_fetch} days."
+            else:
+                days_to_fetch = 60
+                yield "status", f"Initial import: Fetching last {days_to_fetch} days."
 
-        if start_date > end_date:
-            logging.info("All orders are up to date. No new orders to fetch.")
+        if days_to_fetch <= 0:
+            yield "status", "All orders are up to date."
+            yield "done", True
             return
 
-        # Fetch orders from Amazon
-        logging.info(f"Logging into Amazon as {settings['AMAZON_EMAIL']}...")
+        yield "status", f"Logging into Amazon as {settings['AMAZON_EMAIL']}..."
         session = AmazonSession(
             username=settings['AMAZON_EMAIL'],
             password=settings['AMAZON_PASSWORD'],
             otp_secret_key=settings.get('AMAZON_OTP_SECRET_KEY')
         )
         session.login()
-        logging.info("Amazon login successful.")
+        yield "status", "Amazon login successful."
+
+        amazon_transactions = AmazonTransactions(session)
+        yield "status", f"Fetching transactions for the last {days_to_fetch} days..."
+        transactions = amazon_transactions.get_transactions(days=days_to_fetch)
+        order_numbers = {t.order_number for t in transactions if t.order_number}
+
+        if not order_numbers:
+            yield "status", "No new orders found."
+            session.logout()
+            yield "done", True
+            return
+        
+        total_orders = len(order_numbers)
+        yield "status", f"Found {total_orders} unique orders to process."
+        yield "progress", {"value": 0, "max": total_orders}
 
         amazon_orders = AmazonOrders(session)
-        orders = amazon_orders.get_orders(start_date=start_date, end_date=end_date)
-        
-        order_list = list(orders)
-        if not order_list:
-            logging.info("No new orders found in the specified date range.")
-            session.logout()
-            return
-            
-        logging.info(f"Found {len(order_list)} new orders to process.")
+        processed_count = 0
+        MAX_CONCURRENT_REQUESTS = 5
 
-        # Process and store data
-        all_item_titles = [item.title for order in order_list for item in order.items]
-        summaries = summarize_titles_bulk(all_item_titles, settings['OLLAMA_URL'], settings['OLLAMA_MODEL'])
+        with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_REQUESTS) as executor:
+            future_to_order_num = {
+                executor.submit(fetch_order_with_retries, order_num, amazon_orders): order_num
+                for order_num in order_numbers
+            }
 
-        logging.info("Inserting new orders and items into the database...")
-        with get_db_cursor(commit=True) as cur:
-            for order in order_list:
-                # Insert order (or do nothing if it already exists)
-                cur.execute("""
-                    INSERT INTO orders (order_id, order_placed_date, grand_total, subscription_discount, recipient_name)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (order_id) DO NOTHING;
-                """, (
-                    order.order_number,
-                    order.order_placed_date,
-                    order.grand_total,
-                    order.subscription_discount,
-                    order.recipient.name if order.recipient else None
-                ))
-                
-                # Insert items for the order
-                for item in order.items:
-                    asin = extract_asin(item.link)
-                    short_title = summaries.get(item.title, item.title)
-                    
-                    cur.execute("""
-                        INSERT INTO items (order_id, asin, full_title, short_title, link, quantity, price_per_unit, is_subscribe_and_save)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-                    """, (
-                        order.order_number,
-                        asin,
-                        item.title,
-                        short_title,
-                        f"https://www.amazon.com{item.link}" if item.link else None,
-                        item.quantity,
-                        item.price,
-                        item.is_subscribe_and_save
-                    ))
-            logging.info("Successfully inserted all new orders and items.")
+            with get_db_cursor(commit=True) as cur:
+                for future in as_completed(future_to_order_num):
+                    order_number = future_to_order_num[future]
+                    try:
+                        order = future.result()
+
+                        if isinstance(order, Exception):
+                            logger.error(f"Skipping order {order_number} due to fetch error: {order}")
+                            continue
+                        
+                        if not order or not order.items:
+                            logger.warning(f"Skipping order {order_number} as it has no items.")
+                            continue
+
+                        cur.execute("""
+                            INSERT INTO orders (order_id, order_placed_date, grand_total, subscription_discount, recipient_name)
+                            VALUES (%s, %s, %s, %s, %s) ON CONFLICT (order_id) DO NOTHING;
+                        """, (
+                            order.order_number, order.order_placed_date, order.grand_total,
+                            order.subscription_discount, order.recipient.name if order.recipient else None
+                        ))
+
+                        for item in order.items:
+                            asin = extract_asin(item.link)
+                            is_sns = getattr(item, 'is_subscribe_and_save', False)
+                            quantity = item.quantity if item.quantity is not None else 1
+                            
+                            cur.execute("""
+                                INSERT INTO items (order_id, asin, full_title, link, quantity, price_per_unit, is_subscribe_and_save)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+                            """, (
+                                order.order_number, asin, item.title,
+                                f"https://www.amazon.com{item.link}" if item.link else None,
+                                quantity, item.price, is_sns
+                            ))
+                    except Exception as e:
+                        logger.error(f"Failed to process and save order {order_number}: {e}", exc_info=True)
+                    finally:
+                        processed_count += 1
+                        yield "progress", {"value": processed_count, "max": total_orders}
 
         session.logout()
-        logging.info("Ingestion process completed successfully.")
+        yield "status", "Ingestion complete."
+        yield "done", True
 
-    except (ValueError, AmazonOrdersError) as e:
-        logging.error(f"A configuration or authentication error occurred: {e}")
-    except Exception:
-        logging.exception("An unexpected error occurred during the ingestion process.")
+    except Exception as e:
+        logger.error(f"An error occurred during ingestion: {e}", exc_info=True)
+        yield "error", str(e)
+        raise
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    load_dotenv()
+    
+    parser = argparse.ArgumentParser(description="Run the Amazon order ingestion script.")
+    parser.add_argument('--days', type=int, help="Number of days of order history to fetch.")
+    args = parser.parse_args()
+
+    def console_progress_callback(event_type, data):
+        print(f"[{event_type.upper()}] {data}")
+
+    try:
+        init_db_pool()
+        for event_type, data in main(manual_days_override=args.days):
+             console_progress_callback(event_type, data)
+    except Exception as e:
+        print(f"\nA critical error occurred: {e}")
+

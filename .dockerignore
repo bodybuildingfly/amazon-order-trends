@@ -1,0 +1,23 @@
+# This file tells Docker which files and folders to ignore when
+# building the image, resulting in a smaller and faster build process.
+
+# Ignore git history and local configuration
+.git
+.gitignore
+.env
+
+# Ignore IDE and OS-specific files
+.vscode/
+.idea/
+.DS_Store
+
+# Ignore Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+*.egg-info/
+
+# Ignore local Node.js dependencies, as these will be installed
+# fresh inside the container during the build process.
+frontend/node_modules

@@ -1,27 +1,79 @@
+/**
+ * @file frontend/src/index.css
+ * @description This file contains the 508 compliant color themes. A new .form-label
+ * class has been added and .form-input has been updated to style placeholder text.
+ */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    /* Light Theme */
-    --color-primary: #2563EB;
-    --color-surface: #F8FAFC;
-    --color-background: #F1F5F9;
-    --color-text-primary: #0F172A;
-    --color-text-secondary: #475569;
-    --color-border-color: #CBD5E1;
+    /* --- LIGHT THEME (508 Compliant) --- */
+    --color-primary: #2563EB; /* blue-600 */
+    --color-primary-hover: #1D4ED8; /* blue-700 */
+    --color-primary-text: #ffffff; /* white */
+    --color-secondary: #E2E8F0; /* slate-200 */
+    --color-secondary-hover: #CBD5E1; /* slate-300 */
+    --color-secondary-text: #1E293B; /* slate-800 */
+    --color-danger: #DC2626; /* red-600 */
+    --color-danger-hover: #B91C1C; /* red-700 */
+    --color-danger-text: #b91c1c; /* red-700 */
+    --color-background: #F1F5F9; /* slate-100 */
+    --color-surface: #F8FAFC; /* slate-50 */
+    --color-surface-hover: #E2E8F0; /* slate-200 */
+    --color-text-primary: #0F172A; /* slate-900 */
+    --color-text-secondary: #475569; /* slate-600 */
+    --color-text-muted: #64748B; /* slate-500 */
+    --color-text-accent: #2563EB; /* blue-600 */
+    --color-border-color: #CBD5E1; /* slate-300 */
   }
+
   html.dark {
-    /* Dark Theme */
-    --color-primary: #3B82F6;
-    --color-surface: #1E293B;
-    --color-background: #0F172A;
-    --color-text-primary: #F1F5F9;
-    --color-text-secondary: #94A3B8;
-    --color-border-color: #334155;
+    /* --- DARK THEME (508 Compliant) --- */
+    --color-primary: #3B82F6; /* blue-500 */
+    --color-primary-hover: #2563EB; /* blue-600 */
+    --color-primary-text: #ffffff; /* white */
+    --color-secondary: #334155; /* slate-700 */
+    --color-secondary-hover: #475569; /* slate-600 */
+    --color-secondary-text: #F1F5F9; /* slate-100 */
+    --color-danger: #EF4444; /* red-500 */
+    --color-danger-hover: #DC2626; /* red-600 */
+    --color-danger-text: #FEE2E2; /* red-100 */
+    --color-background: #0F172A; /* slate-900 */
+    --color-surface: #1E293B; /* slate-800 */
+    --color-surface-hover: #334155; /* slate-700 */
+    --color-text-primary: #F1F5F9; /* slate-100 */
+    --color-text-secondary: #94A3B8; /* slate-400 */
+    --color-text-muted: #64748B; /* slate-500 */
+    --color-text-accent: #60A5FA; /* blue-400 */
+    --color-border-color: #334155; /* slate-700 */
   }
+
+  html, body, #root {
+    height: 100%;
+  }
+
   body {
-    @apply bg-background text-text-primary font-sans;
+    background-color: var(--color-background);
   }
 }
+
+@layer components {
+  .form-label {
+    @apply block text-sm font-medium text-text-secondary mb-1;
+  }
+  .form-input {
+    @apply mt-1 block w-full px-4 py-2 bg-surface border border-border-color rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200 text-text-primary;
+  }
+  .form-input::placeholder {
+    color: var(--color-text-muted);
+  }
+  .form-button-primary {
+    @apply px-5 py-2 rounded-lg bg-primary text-primary-text font-semibold hover:bg-primary-hover shadow-md disabled:opacity-50;
+  }
+  .form-button-secondary {
+    @apply px-5 py-2 rounded-lg bg-secondary text-secondary-text font-semibold hover:bg-secondary-hover shadow-md;
+  }
+}
+

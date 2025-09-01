@@ -1,7 +1,8 @@
 -- ingestion/schema.sql
+-- Create a UUID extension if it doesn't exist.
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Stores user accounts for authentication
+-- Table to store user login information
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -10,12 +11,18 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Key-value store for all application settings
-CREATE TABLE IF NOT EXISTS settings (
-    key VARCHAR(255) PRIMARY KEY,
-    value TEXT,
-    is_encrypted BOOLEAN DEFAULT FALSE,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+-- Table to store user-specific settings
+CREATE TABLE IF NOT EXISTS user_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID UNIQUE NOT NULL,
+    amazon_email VARCHAR(255),
+    amazon_password_encrypted BYTEA, -- Correct data type for encrypted data
+    amazon_otp_secret_key VARCHAR(255),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_user
+        FOREIGN KEY(user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
 );
 
 -- Table to store high-level order information
@@ -34,11 +41,13 @@ CREATE TABLE IF NOT EXISTS items (
     order_id VARCHAR(50) NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
     asin VARCHAR(20),
     full_title TEXT NOT NULL,
-    short_title VARCHAR(255),
     link TEXT,
     quantity INTEGER NOT NULL,
     price_per_unit NUMERIC(10, 2) NOT NULL,
-    is_subscribe_and_save BOOLEAN DEFAULT FALSE
+    is_subscribe_and_save BOOLEAN DEFAULT FALSE,
+    -- Add a unique constraint to prevent duplicate items per order
+    UNIQUE(order_id, full_title, price_per_unit)
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_asin ON items(asin);
+
