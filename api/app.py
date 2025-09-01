@@ -21,7 +21,7 @@ from cryptography.fernet import Fernet
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared.db import get_db_cursor
-from ingestion.ingestion_script import main as run_ingestion
+from ingestion.ingestion_script import main as run_ingestion_generator
 
 # --- App Initialization & Config ---
 app = Flask(__name__, static_folder='../frontend/build', static_url_path='/')
@@ -165,12 +165,14 @@ def save_settings():
                 """, (current_user_id, email, encrypted_password, otp))
             else:
                 cur.execute("""
-                    INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        amazon_email = EXCLUDED.amazon_email,
-                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key;
-                """, (current_user_id, email, otp))
+                    UPDATE user_settings SET amazon_email = %s, amazon_otp_secret_key = %s WHERE user_id = %s;
+                """, (email, otp, current_user_id))
+                # If no rows were updated, it means the user doesn't exist yet. Insert a new row.
+                if cur.rowcount == 0:
+                    cur.execute("""
+                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key)
+                        VALUES (%s, %s, %s);
+                    """, (current_user_id, email, otp))
         
         return jsonify({"message": "Settings saved successfully."}), 200
     except Exception as e:
@@ -185,7 +187,7 @@ def run_ingestion_route():
     def generate_events():
         app.logger.info(f"[SSE] Stream opened for ingestion run ({days} days).")
         try:
-            for event_type, data in run_ingestion(manual_days_override=days):
+            for event_type, data in run_ingestion_generator(manual_days_override=days):
                 event_data = json.dumps({"type": event_type, "payload": data})
                 yield f"data: {event_data}\n\n"
         except Exception as e:
@@ -259,49 +261,36 @@ def get_all_items():
         app.logger.error(f"Failed to fetch items: {e}", exc_info=True)
         return jsonify({"error": "Failed to fetch items"}), 500
 
-# --- NEW: Endpoint for Subscribe & Save items ---
-@app.route("/api/sns-items")
+@app.route('/api/sns-items')
 @jwt_required()
 def get_sns_items():
-    """
-    Fetches all Subscribe & Save items, along with their previous order's
-    price and date for comparison.
-    """
-    query = """
-    WITH ranked_items AS (
-        SELECT
-            i.asin,
-            i.full_title,
-            i.link,
-            i.price_per_unit,
-            o.order_placed_date,
-            LAG(i.price_per_unit, 1) OVER (PARTITION BY i.asin ORDER BY o.order_placed_date) AS prev_price,
-            LAG(o.order_placed_date, 1) OVER (PARTITION BY i.asin ORDER BY o.order_placed_date) AS prev_date,
-            ROW_NUMBER() OVER (PARTITION BY i.asin ORDER BY o.order_placed_date DESC) as rn
-        FROM items i
-        JOIN orders o ON i.order_id = o.order_id
-        WHERE i.is_subscribe_and_save = TRUE AND i.asin IS NOT NULL
-    )
-    SELECT 
-        asin, 
-        full_title, 
-        link, 
-        price_per_unit, 
-        order_placed_date, 
-        prev_price, 
-        prev_date
-    FROM ranked_items
-    WHERE rn = 1
-    ORDER BY full_title;
-    """
     try:
         with get_db_cursor() as cur:
-            cur.execute(query)
+            cur.execute("""
+                WITH RankedItems AS (
+                    SELECT
+                        i.asin, i.full_title, i.link, i.price_per_unit, o.order_placed_date,
+                        ROW_NUMBER() OVER(PARTITION BY i.asin ORDER BY o.order_placed_date DESC) as rn
+                    FROM items i
+                    JOIN orders o ON i.order_id = o.order_id
+                    WHERE i.is_subscribe_and_save = TRUE AND i.asin IS NOT NULL
+                )
+                SELECT
+                    current.asin, current.full_title, current.link,
+                    current.price_per_unit AS current_price,
+                    current.order_placed_date AS current_date,
+                    previous.price_per_unit AS previous_price,
+                    previous.order_placed_date AS previous_date
+                FROM RankedItems current
+                LEFT JOIN RankedItems previous ON current.asin = previous.asin AND previous.rn = 2
+                WHERE current.rn = 1
+                ORDER BY current.full_title;
+            """)
             items = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
         return jsonify(items)
     except Exception as e:
-        app.logger.error(f"Failed to fetch Subscribe & Save items: {e}", exc_info=True)
-        return jsonify({"error": "Failed to fetch Subscribe & Save items"}), 500
+        app.logger.error(f"Failed to fetch S&S items: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch Subscribe & Save items."}), 500
 
 # --- Serve React App ---
 @app.route('/', defaults={'path': ''})

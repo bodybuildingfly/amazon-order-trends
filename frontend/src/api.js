@@ -3,29 +3,24 @@ import { toast } from 'react-toastify';
 
 /**
  * @description Creates a centralized axios instance for all API calls.
+ * In development, it targets the Flask server directly on port 5001.
  */
 const apiClient = axios.create({
+    // CORRECTED: The baseURL now points directly to the backend server, bypassing the proxy.
     baseURL: process.env.NODE_ENV === 'production' 
       ? '' 
-      : 'http://localhost:3000', // Proxy will handle this
+      : 'http://localhost:5001',
     withCredentials: true,
 });
 
-// Add a response interceptor
+// Add a response interceptor for global error handling
 apiClient.interceptors.response.use(
-  (response) => {
-    // Any status code that lie within the range of 2xx cause this function to trigger
-    return response;
-  },
+  (response) => response,
   (error) => {
-    // Any status codes that falls outside the range of 2xx cause this function to trigger
-    // You can add global error handling here, e.g., for 401 Unauthorized
     if (error.response && error.response.status === 401) {
-      // For example, redirect to login page or refresh token
-      // For now, we just log and toast
       console.error("Authentication Error:", error.response);
       toast.error("Session expired. Please log in again.");
-      // You might want to trigger a logout action here
+      // Future logic to handle automatic logout could go here.
     }
     return Promise.reject(error);
   }
