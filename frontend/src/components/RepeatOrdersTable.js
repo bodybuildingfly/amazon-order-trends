@@ -42,21 +42,43 @@ const PriceWithIndicatorCell = ({ price, date, comparePrice }) => {
 const RepeatOrdersTable = () => {
     const [data, setData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [sortBy, setSortBy] = useState('date_current');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [filterText, setFilterText] = useState('');
+    const [inputValue, setInputValue] = useState('');
+    const [priceChangedOnly, setPriceChangedOnly] = useState(false);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const { data: response } = await apiClient.get('/api/repeat-items');
+            const params = { sortBy, sortOrder, filterText, priceChangedOnly };
+            const { data: response } = await apiClient.get('/api/repeat-items', { params });
             setData(response);
         } catch (error) {
             toast.error("Failed to fetch repeat purchase item data.");
         }
         setIsLoading(false);
-    }, []);
+    }, [sortBy, sortOrder, filterText, priceChangedOnly]);
+
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            setFilterText(inputValue);
+        }, 500); // Debounce search input
+        return () => clearTimeout(timeoutId);
+    }, [inputValue]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const handleSort = (columnId) => {
+        if (sortBy === columnId) {
+            setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortBy(columnId);
+            setSortOrder('desc');
+        }
+    };
 
     const columns = useMemo(() => [
         {
@@ -98,6 +120,7 @@ const RepeatOrdersTable = () => {
             )
         },
         { 
+            accessorKey: 'price_current',
             header: 'Current',
             cell: ({ row }) => (
                 <PriceWithIndicatorCell
@@ -108,7 +131,7 @@ const RepeatOrdersTable = () => {
             )
         },
         {
-            header: 'Previous Order',
+            header: 'Previous',
             cell: ({ row }) => (
                 <PriceWithIndicatorCell
                     price={row.original.price_prev_1}
@@ -118,7 +141,7 @@ const RepeatOrdersTable = () => {
             )
         },
         {
-            header: '2 Orders Ago',
+            header: '2 Ago',
             cell: ({ row }) => (
                 <PriceWithIndicatorCell
                     price={row.original.price_prev_2}
@@ -128,7 +151,7 @@ const RepeatOrdersTable = () => {
             )
         },
         {
-            header: '3 Orders Ago',
+            header: '3 Ago',
             cell: ({ row }) => (
                 <PriceWithIndicatorCell
                     price={row.original.price_prev_3}
@@ -142,6 +165,7 @@ const RepeatOrdersTable = () => {
         data,
         columns,
         getCoreRowModel: getCoreRowModel(),
+        manualSorting: true,
     });
 
     return (
@@ -151,6 +175,27 @@ const RepeatOrdersTable = () => {
                 <button onClick={fetchData} disabled={isLoading} className="form-button-secondary">
                     {isLoading ? 'Refreshing...' : 'Refresh'}
                 </button>
+            </div>
+            <div className="flex justify-between items-center mb-4">
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="Search by title..."
+                    className="form-input w-full md:w-1/3"
+                />
+                <div className="flex items-center space-x-2">
+                    <input
+                        type="checkbox"
+                        id="price-changed-only"
+                        checked={priceChangedOnly}
+                        onChange={(e) => setPriceChangedOnly(e.target.checked)}
+                        className="form-checkbox"
+                    />
+                    <label htmlFor="price-changed-only" className="text-sm font-medium text-text-primary">
+                        Show only current price changes
+                    </label>
+                </div>
             </div>
             <div className="flex-grow overflow-auto">
                 {isLoading ? <Spinner /> : (
@@ -165,8 +210,21 @@ const RepeatOrdersTable = () => {
                                 {table.getHeaderGroups().map(headerGroup => (
                                     <tr key={headerGroup.id}>
                                         {headerGroup.headers.map(header => (
-                                            <th key={header.id} scope="col" className="px-6 py-3">
-                                                {flexRender(header.column.columnDef.header, header.getContext())}
+                                            <th key={header.id} scope="col" className="px-6 py-3 whitespace-nowrap">
+                                                {header.isPlaceholder ? null : (
+                                                    <div
+                                                        className='flex items-center cursor-pointer'
+                                                        onClick={() => handleSort(header.column.id)}
+                                                    >
+                                                        {flexRender(
+                                                            header.column.columnDef.header,
+                                                            header.getContext()
+                                                        )}
+                                                        <span className="ml-2">
+                                                            {sortBy === header.column.id ? (sortOrder === 'asc' ? '🔼' : '🔽') : '↕️'}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </th>
                                         ))}
                                     </tr>
