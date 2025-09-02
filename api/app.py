@@ -16,6 +16,7 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity, get_jwt
 from cryptography.fernet import Fernet
+from flask_apscheduler import APScheduler
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,6 +28,10 @@ from ingestion.ingestion_script import main as run_ingestion_generator
 app = Flask(__name__, static_folder='../frontend/build', static_url_path='/')
 CORS(app, supports_credentials=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Scheduler Setup ---
+scheduler = APScheduler()
+scheduler.init_app(app)
 
 app.config["JWT_SECRET_KEY"] = os.environ.get('JWT_SECRET_KEY', 'default-secret-key-for-dev')
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=1)
@@ -208,23 +213,26 @@ def get_settings():
         current_user_id = get_jwt_identity()
         with get_db_cursor() as cur:
             cur.execute(
-                "SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key FROM user_settings WHERE user_id = %s",
+                "SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion FROM user_settings WHERE user_id = %s",
                 (current_user_id,)
             )
             settings_row = cur.fetchone()
-        
+
         if settings_row:
-            email, password_encrypted, otp = settings_row
+            email, password_encrypted, otp, enable_scheduled_ingestion = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
-                "amazon_otp_secret_key": otp or ''
+                "amazon_otp_secret_key": otp or '',
+                "enable_scheduled_ingestion": enable_scheduled_ingestion,
             }), 200
         else:
+            # If no settings row exists, return defaults
             return jsonify({
                 "is_configured": False,
                 "amazon_email": '',
-                "amazon_otp_secret_key": ''
+                "amazon_otp_secret_key": '',
+                "enable_scheduled_ingestion": False,
             }), 200
     except Exception as e:
         app.logger.error(f"Failed to get settings: {e}", exc_info=True)
@@ -235,35 +243,46 @@ def get_settings():
 def save_settings():
     data = request.get_json()
     current_user_id = get_jwt_identity()
-    
+
     try:
         initialize_fernet()
         email = data.get('amazon_email')
         password = data.get('amazon_password')
         otp = data.get('amazon_otp_secret_key')
+        enable_scheduled_ingestion = data.get('enable_scheduled_ingestion', False)
 
         with get_db_cursor(commit=True) as cur:
+            # This logic handles both insert and update operations for user settings.
             if password:
+                # If a new password is provided, it must be encrypted.
                 encrypted_password = fernet.encrypt(password.encode('utf-8'))
                 cur.execute("""
-                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         amazon_email = EXCLUDED.amazon_email,
                         amazon_password_encrypted = EXCLUDED.amazon_password_encrypted,
-                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key;
-                """, (current_user_id, email, encrypted_password, otp))
+                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key,
+                        enable_scheduled_ingestion = EXCLUDED.enable_scheduled_ingestion;
+                """, (current_user_id, email, encrypted_password, otp, enable_scheduled_ingestion))
             else:
+                # If no password is provided, update other fields without changing the password.
                 cur.execute("""
-                    UPDATE user_settings SET amazon_email = %s, amazon_otp_secret_key = %s WHERE user_id = %s;
-                """, (email, otp, current_user_id))
-                # If no rows were updated, it means the user doesn't exist yet. Insert a new row.
+                    UPDATE user_settings SET
+                        amazon_email = %s,
+                        amazon_otp_secret_key = %s,
+                        enable_scheduled_ingestion = %s
+                    WHERE user_id = %s;
+                """, (email, otp, enable_scheduled_ingestion, current_user_id))
+                
+                # If no row was updated, it means the user is saving settings for the first time
+                # without setting a password, which is not a complete setup.
                 if cur.rowcount == 0:
                     cur.execute("""
-                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key)
-                        VALUES (%s, %s, %s);
-                    """, (current_user_id, email, otp))
-        
+                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key, enable_scheduled_ingestion)
+                        VALUES (%s, %s, %s, %s);
+                    """, (current_user_id, email, otp, enable_scheduled_ingestion))
+
         return jsonify({"message": "Settings saved successfully."}), 200
     except Exception as e:
         app.logger.error(f"Failed to save settings: {e}", exc_info=True)
@@ -447,6 +466,38 @@ def get_repeat_items():
 
 
 
+# --- Scheduled Jobs ---
+@scheduler.task('cron', id='scheduled_ingestion', hour=1, minute=0)
+def scheduled_ingestion():
+    """
+    Runs daily to fetch the last 3 days of orders for users who have the feature enabled.
+    """
+    app.logger.info("Starting scheduled ingestion job...")
+    with app.app_context():
+        try:
+            with get_db_cursor() as cur:
+                cur.execute(
+                    "SELECT user_id FROM user_settings WHERE enable_scheduled_ingestion = TRUE"
+                )
+                user_ids = [row[0] for row in cur.fetchall()]
+            
+            app.logger.info(f"Found {len(user_ids)} users for scheduled ingestion.")
+
+            for user_id in user_ids:
+                try:
+                    app.logger.info(f"Running ingestion for user {user_id}...")
+                    # The generator needs to be consumed for the code to execute
+                    for event, data in run_ingestion_generator(user_id=user_id, manual_days_override=3):
+                        if event == 'error':
+                            app.logger.error(f"Error during ingestion for user {user_id}: {data}")
+                except Exception as e:
+                    app.logger.error(f"Failed to run ingestion for user {user_id}: {e}", exc_info=True)
+
+        except Exception as e:
+            app.logger.error(f"An error occurred during the scheduled ingestion job: {e}", exc_info=True)
+    app.logger.info("Scheduled ingestion job finished.")
+
+
 # --- Serve React App ---
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -457,5 +508,6 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
+    scheduler.start()
     app.run(host='0.0.0.0', port=5001)
 

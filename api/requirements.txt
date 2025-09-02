@@ -7,3 +7,4 @@ Werkzeug
 Flask-JWT-Extended
 cryptography
 gevent
+Flask-APScheduler

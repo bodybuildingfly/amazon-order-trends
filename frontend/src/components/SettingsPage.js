@@ -23,6 +23,7 @@ const SettingsPage = () => {
         amazon_email: '',
         amazon_password: '',
         amazon_otp_secret_key: '',
+        enable_scheduled_ingestion: false,
     });
     
     const eventSourceRef = useRef(null);
@@ -37,6 +38,7 @@ const SettingsPage = () => {
                     ...prev,
                     amazon_email: data.amazon_email,
                     amazon_otp_secret_key: data.amazon_otp_secret_key,
+                    enable_scheduled_ingestion: data.enable_scheduled_ingestion || false,
                 }));
                 setIsConfigured(data.is_configured);
             } catch (err) {
@@ -57,8 +59,11 @@ const SettingsPage = () => {
 
     // --- Event Handlers ---
     const handleFormChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
     };
 
     const handleSaveSettings = async (e) => {
@@ -148,6 +153,23 @@ const SettingsPage = () => {
                     <div>
                         <label htmlFor="amazon_otp_secret_key" className="form-label">2FA Secret Key (Optional)</label>
                         <input type="text" name="amazon_otp_secret_key" id="amazon_otp_secret_key" value={formData.amazon_otp_secret_key} onChange={handleFormChange} className="form-input" />
+                    </div>
+                    <div className="pt-2">
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                name="enable_scheduled_ingestion"
+                                checked={formData.enable_scheduled_ingestion}
+                                onChange={handleFormChange}
+                                className="form-checkbox"
+                            />
+                            <span className="text-text-secondary">
+                                Enable ongoing data retrieval
+                                <p className="text-xs text-text-muted">
+                                    When selected, your Amazon orders will be automatically pulled every morning at 1am.
+                                </p>
+                            </span>
+                        </label>
                     </div>
                     <div className="flex justify-end">
                         <button type="submit" disabled={isSaving} className="form-button-primary">

@@ -26,6 +26,10 @@ module.exports = {
       }
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/forms')({
+      strategy: 'class', // Use classes like `form-input`, `form-checkbox`, etc.
+    }),
+  ],
 }
 
