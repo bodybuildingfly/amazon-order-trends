@@ -6,8 +6,9 @@ import re
 import base64
 import hashlib
 import time
-from datetime import date
+from datetime import date, datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
 from cryptography.fernet import Fernet
 from amazonorders.session import AmazonSession
 from amazonorders.orders import AmazonOrders
@@ -47,20 +48,27 @@ def get_settings(user_id):
     logger.info(f"Fetching settings for user_id: {user_id}...")
     with get_db_cursor() as cur:
         cur.execute(
-            "SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key FROM user_settings WHERE user_id = %s",
+            """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key,
+                      discord_webhook_url, discord_notification_preference
+               FROM user_settings WHERE user_id = %s""",
             (user_id,)
         )
         settings_row = cur.fetchone()
 
     if not settings_row: raise ValueError(f"Settings not found for user {user_id}.")
-    amazon_email, encrypted_password, amazon_otp_secret_key = settings_row
-    if not amazon_email or not encrypted_password: raise ValueError("Amazon credentials are not fully configured.")
+    
+    amazon_email, encrypted_password, amazon_otp_secret_key, webhook_url, notification_pref = settings_row
+    
+    if not amazon_email or not encrypted_password:
+        raise ValueError("Amazon credentials are not fully configured.")
 
     decrypted_password = decrypt_value(encrypted_password)
     return {
         'AMAZON_EMAIL': amazon_email,
         'AMAZON_PASSWORD': decrypted_password,
-        'AMAZON_OTP_SECRET_KEY': amazon_otp_secret_key or None
+        'AMAZON_OTP_SECRET_KEY': amazon_otp_secret_key or None,
+        'DISCORD_WEBHOOK_URL': webhook_url,
+        'DISCORD_NOTIFICATION_PREFERENCE': notification_pref or 'off'
     }
 
 def extract_asin(url):
@@ -69,72 +77,128 @@ def extract_asin(url):
     match = re.search(r'/(dp|gp/product)/(\w{10})', url)
     return match.group(2) if match else None
 
+def send_discord_notification(webhook_url, title, description, color, log_messages):
+    """Sends a formatted notification to a Discord webhook."""
+    if not webhook_url:
+        return
+
+    # Truncate log messages to fit within Discord's embed limits
+    log_content = "\n".join(log_messages)
+    if len(log_content) > 1900:
+        log_content = log_content[:1900] + "\n... (log truncated)"
+    
+    embed = {
+        "title": title,
+        "description": description,
+        "color": color,
+        "fields": [{
+            "name": "Verbose Log",
+            "value": f"```\n{log_content}\n```"
+        }],
+        "footer": {
+            "text": f"Report generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        }
+    }
+
+    try:
+        requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to send Discord notification: {e}")
+
 def main(user_id, manual_days_override=None):
     """
     Generator function to run the ingestion process and yield progress events.
     :param user_id: The UUID of the user for whom to run ingestion.
     :param manual_days_override: An integer specifying the number of days to fetch.
     """
+    logs = []
+    error_occurred = False
+    settings = {}
+    session = None
+
+    def yield_and_log(event, message):
+        """Yields an event and logs the message."""
+        if event == "error":
+            nonlocal error_occurred
+            error_occurred = True
+            logger.error(message)
+        else:
+            logger.info(message)
+        
+        # Ensure message is a string before appending
+        log_message = str(message)
+        logs.append(f"[{event.upper()}] {log_message}")
+        yield event, message
+
+
     try:
         initialize_fernet()
         settings = get_settings(user_id)
         
+        # Wrapper for yielding status and logging it
+        def log_status(message):
+            yield from yield_and_log("status", message)
+
         days_to_fetch = 0
         if manual_days_override is not None:
             days_to_fetch = manual_days_override
-            yield "status", f"Manual override: Fetching orders for the last {days_to_fetch} days."
+            yield from log_status(f"Manual override: Fetching orders for the last {days_to_fetch} days.")
         else:
             with get_db_cursor() as cur:
-                cur.execute("SELECT MAX(order_placed_date) FROM orders")
+                cur.execute("SELECT MAX(order_placed_date) FROM orders WHERE user_id = %s", (user_id,))
                 last_order_date = cur.fetchone()[0]
             if last_order_date:
                 days_to_fetch = (date.today() - last_order_date).days
-                yield "status", f"Incremental update: Fetching orders for the last {days_to_fetch} days."
+                yield from log_status(f"Incremental update: Fetching orders for the last {days_to_fetch} days.")
             else:
                 days_to_fetch = 60
-                yield "status", f"Initial import: Fetching orders for the last {days_to_fetch} days."
+                yield from log_status(f"Initial import: Fetching orders for the last {days_to_fetch} days.")
 
         if days_to_fetch <= 0:
-            yield "status", "All orders are up to date."
+            yield from log_status("All orders are up to date.")
+            # We return here, so the finally block will execute for notification.
             return
 
-        yield "status", f"Logging into Amazon as {settings['AMAZON_EMAIL']}..."
+        yield from log_status(f"Logging into Amazon as {settings['AMAZON_EMAIL']}...")
         session = AmazonSession(
             username=settings['AMAZON_EMAIL'],
             password=settings['AMAZON_PASSWORD'],
             otp_secret_key=settings.get('AMAZON_OTP_SECRET_KEY')
         )
         session.login()
-        yield "status", "Amazon login successful."
+        yield from log_status("Amazon login successful.")
 
         amazon_transactions = AmazonTransactions(session)
-        yield "status", f"Fetching transactions for the last {days_to_fetch} days..."
+        yield from log_status(f"Fetching transactions for the last {days_to_fetch} days...")
         transactions = amazon_transactions.get_transactions(days=days_to_fetch)
         
         order_numbers = {t.order_number for t in transactions if t.order_number}
 
         if not order_numbers:
-            yield "status", "No new orders found in the specified date range."
-            session.logout()
+            yield from log_status("No new orders found in the specified date range.")
             return
         
         total_orders = len(order_numbers)
-        yield "progress", {"value": 0, "max": total_orders}
-        yield "status", f"Found {total_orders} unique orders to process..."
+        yield from yield_and_log("progress", {"value": 0, "max": total_orders})
+        yield from log_status(f"Found {total_orders} unique orders to process...")
 
         amazon_orders = AmazonOrders(session)
         processed_count = 0
 
         def fetch_order_with_retries(order_num):
-            """Fetches an order with retry logic, following the reference app's direct method."""
+            """Fetches an order with retry logic."""
             for attempt in range(3):
                 try:
-                    # --- CORRECTED LOGIC: Use the simple get_order call as per your working application ---
                     return amazon_orders.get_order(order_id=order_num)
                 except Exception as e:
                     logger.warning(f"Attempt {attempt + 1} for order {order_num} failed: {e}")
                     if attempt < 2: time.sleep(2)
-            logger.error(f"All retries failed for order {order_num}.")
+            
+            nonlocal error_occurred
+            error_occurred = True
+            log_msg = f"All retries failed for order {order_num}."
+            logger.error(log_msg)
+            logs.append(f"[ERROR] {log_msg}")
             return None
 
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -165,21 +229,43 @@ def main(user_id, manual_days_override=None):
                                     thumbnail_url = EXCLUDED.thumbnail_url;
                             """, (
                                 order.order_number, extract_asin(item.link), item.title,
-                                f"https://www.amazon.com{item.link}" if item.link else None,
+                                item.link,
                                 item.image_link,
                                 item.quantity or 1, item.price, is_subscribe_and_save_order
                             ))
                     except Exception as e:
-                        logger.error(f"Failed to process order {order.order_number} in DB: {e}", exc_info=True)
+                        yield from yield_and_log("error", f"Failed to process order {order.order_number} in DB: {e}")
 
-        yield "status", "Successfully processed all fetched orders."
-        session.logout()
-        yield "status", "Ingestion process completed."
+        yield from log_status("Successfully processed all fetched orders.")
         yield "done", "Import complete."
 
     except Exception as e:
-        logger.error(f"An unexpected error occurred during ingestion: {e}", exc_info=True)
-        yield "error", str(e)
+        # Use the logging wrapper to capture the exception
+        yield from yield_and_log("error", f"An unexpected error occurred during ingestion: {e}")
+    finally:
+        if session:
+            session.logout()
+            logs.append("[INFO] Amazon session logged out.")
+
+        webhook_url = settings.get('DISCORD_WEBHOOK_URL')
+        pref = settings.get('DISCORD_NOTIFICATION_PREFERENCE', 'off')
+
+        should_send = (
+            webhook_url and
+            (pref == 'on_all' or (pref == 'on_error' and error_occurred))
+        )
+
+        if should_send:
+            if error_occurred:
+                title = "Ingestion Run Failed"
+                description = "The scheduled data ingestion process encountered one or more errors."
+                color = 15158332  # Red
+            else:
+                title = "Ingestion Run Successful"
+                description = "The scheduled data ingestion process completed without any errors."
+                color = 3066993  # Green
+            
+            send_discord_notification(webhook_url, title, description, color, logs)
 
 # --- Standalone Execution Logic ---
 if __name__ == "__main__":

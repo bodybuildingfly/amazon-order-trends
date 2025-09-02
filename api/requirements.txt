@@ -8,3 +8,4 @@ Flask-JWT-Extended
 cryptography
 gevent
 Flask-APScheduler
+requests

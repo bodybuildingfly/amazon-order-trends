@@ -213,18 +213,22 @@ def get_settings():
         current_user_id = get_jwt_identity()
         with get_db_cursor() as cur:
             cur.execute(
-                "SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion FROM user_settings WHERE user_id = %s",
+                """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, 
+                          enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference 
+                   FROM user_settings WHERE user_id = %s""",
                 (current_user_id,)
             )
             settings_row = cur.fetchone()
 
         if settings_row:
-            email, password_encrypted, otp, enable_scheduled_ingestion = settings_row
+            email, password_encrypted, otp, enable_scheduled_ingestion, webhook_url, notification_pref = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
                 "amazon_otp_secret_key": otp or '',
                 "enable_scheduled_ingestion": enable_scheduled_ingestion,
+                "discord_webhook_url": webhook_url or '',
+                "discord_notification_preference": notification_pref or 'off',
             }), 200
         else:
             # If no settings row exists, return defaults
@@ -233,6 +237,8 @@ def get_settings():
                 "amazon_email": '',
                 "amazon_otp_secret_key": '',
                 "enable_scheduled_ingestion": False,
+                "discord_webhook_url": '',
+                "discord_notification_preference": 'off',
             }), 200
     except Exception as e:
         app.logger.error(f"Failed to get settings: {e}", exc_info=True)
@@ -250,6 +256,8 @@ def save_settings():
         password = data.get('amazon_password')
         otp = data.get('amazon_otp_secret_key')
         enable_scheduled_ingestion = data.get('enable_scheduled_ingestion', False)
+        discord_webhook_url = data.get('discord_webhook_url')
+        discord_notification_preference = data.get('discord_notification_preference', 'off')
 
         with get_db_cursor(commit=True) as cur:
             # This logic handles both insert and update operations for user settings.
@@ -257,31 +265,35 @@ def save_settings():
                 # If a new password is provided, it must be encrypted.
                 encrypted_password = fernet.encrypt(password.encode('utf-8'))
                 cur.execute("""
-                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         amazon_email = EXCLUDED.amazon_email,
                         amazon_password_encrypted = EXCLUDED.amazon_password_encrypted,
                         amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key,
-                        enable_scheduled_ingestion = EXCLUDED.enable_scheduled_ingestion;
-                """, (current_user_id, email, encrypted_password, otp, enable_scheduled_ingestion))
+                        enable_scheduled_ingestion = EXCLUDED.enable_scheduled_ingestion,
+                        discord_webhook_url = EXCLUDED.discord_webhook_url,
+                        discord_notification_preference = EXCLUDED.discord_notification_preference;
+                """, (current_user_id, email, encrypted_password, otp, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference))
             else:
                 # If no password is provided, update other fields without changing the password.
                 cur.execute("""
                     UPDATE user_settings SET
                         amazon_email = %s,
                         amazon_otp_secret_key = %s,
-                        enable_scheduled_ingestion = %s
+                        enable_scheduled_ingestion = %s,
+                        discord_webhook_url = %s,
+                        discord_notification_preference = %s
                     WHERE user_id = %s;
-                """, (email, otp, enable_scheduled_ingestion, current_user_id))
+                """, (email, otp, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference, current_user_id))
                 
                 # If no row was updated, it means the user is saving settings for the first time
                 # without setting a password, which is not a complete setup.
                 if cur.rowcount == 0:
                     cur.execute("""
-                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key, enable_scheduled_ingestion)
-                        VALUES (%s, %s, %s, %s);
-                    """, (current_user_id, email, otp, enable_scheduled_ingestion))
+                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference)
+                        VALUES (%s, %s, %s, %s, %s, %s);
+                    """, (current_user_id, email, otp, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference))
 
         return jsonify({"message": "Settings saved successfully."}), 200
     except Exception as e:
@@ -321,6 +333,18 @@ def amazon_logout():
     except Exception as e:
         app.logger.error(f"Amazon logout command failed: {e}", exc_info=True)
         return jsonify({"error": "Failed to execute Amazon logout command."}), 500
+
+@app.route("/api/scheduler/run", methods=['POST'])
+@admin_required()
+def run_scheduler_manually():
+    """Manually triggers the scheduled ingestion job."""
+    try:
+        scheduler.run_job('scheduled_ingestion')
+        app.logger.info("Manually triggered the scheduled ingestion job.")
+        return jsonify({"message": "Scheduled ingestion job has been triggered successfully."}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to manually trigger scheduled job: {e}", exc_info=True)
+        return jsonify({"error": "Failed to trigger the scheduled job."}), 500
 
 @app.route("/api/items")
 @jwt_required()
