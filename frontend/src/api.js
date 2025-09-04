@@ -1,19 +1,31 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-/**
- * @description Creates a centralized axios instance for all API calls.
- * In development, it targets the Flask server directly on port 5001.
- */
 const apiClient = axios.create({
-    // CORRECTED: The baseURL now points directly to the backend server, bypassing the proxy.
     baseURL: process.env.NODE_ENV === 'production' 
       ? '' 
       : 'http://localhost:5001',
     withCredentials: true,
 });
 
-// Add a response interceptor for global error handling
+// Request interceptor to add the JWT token to headers
+apiClient.interceptors.request.use(
+    (config) => {
+        const authData = localStorage.getItem('auth');
+        if (authData) {
+            const { token } = JSON.parse(authData);
+            if (token) {
+                config.headers['Authorization'] = `Bearer ${token}`;
+            }
+        }
+        return config;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
+
+// Response interceptor for global error handling
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {

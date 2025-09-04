@@ -1,20 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import apiClient from '../api';
-import { useAuth } from '../context/AuthContext';
 
 const Spinner = () => <div className="flex justify-center items-center p-10"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
 
+// Custom hook to get the previous value of a prop or state.
+function usePrevious(value) {
+    const ref = useRef();
+    useEffect(() => {
+        ref.current = value;
+    });
+    return ref.current;
+}
+
 const UserSettingsPage = () => {
-    const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isConfigured, setIsConfigured] = useState(false);
     const [logoutOutput, setLogoutOutput] = useState('');
     const [importDays, setImportDays] = useState(60);
+    
+    // State for the import job
+    const [jobDetails, setJobDetails] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
-    const [importStatus, setImportStatus] = useState('');
-    const [importProgress, setImportProgress] = useState({ value: 0, max: 100 });
+    const [isPolling, setIsPolling] = useState(false);
+    
+    const prevJobStatus = usePrevious(jobDetails?.status);
+    const pollingIntervalRef = useRef(null);
 
     const [formData, setFormData] = useState({
         amazon_email: '',
@@ -22,36 +34,82 @@ const UserSettingsPage = () => {
         amazon_otp_secret_key: '',
         enable_scheduled_ingestion: false,
     });
-    
-    const eventSourceRef = useRef(null);
 
+    const pollImportStatus = useCallback(async () => {
+        try {
+            const { data: job } = await apiClient.get('/api/ingestion/manual/status');
+            setJobDetails(job);
+            if (job && (job.status === 'completed' || job.status === 'failed')) {
+                setIsPolling(false); // Stop polling
+            }
+        } catch (error) {
+            toast.error('Could not get import status. Stopping polling.');
+            setIsPolling(false); // Stop polling on error
+        }
+    }, []);
+
+    // Effect to manage the polling interval based on the isPolling state
     useEffect(() => {
-        const fetchSettings = async () => {
+        if (isPolling) {
+            // Clear any existing interval before starting a new one.
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+            pollingIntervalRef.current = setInterval(pollImportStatus, 3000);
+        } else {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+            }
+        }
+        // Cleanup function to clear interval on component unmount
+        return () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+        };
+    }, [isPolling, pollImportStatus]);
+
+    // Effect for handling job status changes and notifications
+    useEffect(() => {
+        setIsImporting(jobDetails?.status === 'running');
+
+        if (jobDetails?.status !== prevJobStatus) {
+            if (jobDetails.status === 'completed') {
+                toast.success('Manual import finished successfully.');
+            } else if (jobDetails.status === 'failed') {
+                const errorMsg = jobDetails.error || 'An unknown error occurred.';
+                toast.error(`Import failed: ${errorMsg}`);
+            }
+        }
+    }, [jobDetails, prevJobStatus]);
+
+    // Effect for fetching initial data
+    useEffect(() => {
+        const fetchInitialData = async () => {
             setIsLoading(true);
             try {
-                const { data } = await apiClient.get('/api/settings');
+                const settingsRes = await apiClient.get('/api/settings');
                 setFormData(prev => ({
                     ...prev,
-                    amazon_email: data.amazon_email,
-                    amazon_otp_secret_key: data.amazon_otp_secret_key,
-                    enable_scheduled_ingestion: data.enable_scheduled_ingestion || false,
+                    amazon_email: settingsRes.data.amazon_email,
+                    amazon_otp_secret_key: settingsRes.data.amazon_otp_secret_key,
+                    enable_scheduled_ingestion: settingsRes.data.enable_scheduled_ingestion || false,
                 }));
-                setIsConfigured(data.is_configured);
+                setIsConfigured(settingsRes.data.is_configured);
+
+                const { data: initialJob } = await apiClient.get('/api/ingestion/manual/status');
+                setJobDetails(initialJob);
+                if (initialJob?.status === 'running') {
+                    setIsPolling(true);
+                }
             } catch (err) {
-                toast.error('Failed to load settings.');
+                toast.error('Failed to load initial page data.');
             }
             setIsLoading(false);
         };
-        fetchSettings();
-    }, []);
-    
-    useEffect(() => {
-        return () => {
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close();
-            }
-        };
-    }, []);
+        fetchInitialData();
+    }, []); // Runs only on mount
 
     const handleFormChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -61,6 +119,20 @@ const UserSettingsPage = () => {
         }));
     };
 
+    // Derived state for the UI
+    const importProgress = jobDetails?.progress || { value: 0, max: 100 };
+    const importLog = jobDetails?.log || [];
+    let importStatus = '';
+    if (jobDetails) {
+        if (jobDetails.status === 'running') {
+            importStatus = importLog[importLog.length - 1] || 'Import in progress...';
+        } else if (jobDetails.status === 'completed') {
+            importStatus = 'Import completed successfully.';
+        } else if (jobDetails.status === 'failed') {
+            importStatus = `Error: ${jobDetails.error || 'Unknown error'}`;
+        }
+    }
+    
     const handleSaveSettings = async (e) => {
         e.preventDefault();
         setIsSaving(true);
@@ -76,46 +148,23 @@ const UserSettingsPage = () => {
         setIsSaving(false);
     };
 
-    const handleRunIngestion = () => {
-        if (!user?.token) {
-            toast.error("Authentication token not found. Please log in again.");
-            return;
+    const handleRunIngestion = async () => {
+        // Optimistically update UI and start polling
+        setJobDetails({
+            status: 'running',
+            log: ['Requesting server to start import...'],
+            progress: { value: 0, max: 100 }
+        });
+        setIsPolling(true);
+
+        try {
+            await apiClient.post('/api/ingestion/run', { days: importDays });
+        } catch (err) {
+            const errorMsg = err.response?.data?.error || 'Failed to start import.';
+            toast.error(errorMsg);
+            setJobDetails({ status: 'failed', error: errorMsg, log: [errorMsg] });
+            setIsPolling(false);
         }
-
-        setIsImporting(true);
-        setImportStatus('Connecting to server...');
-        setImportProgress({ value: 0, max: 100 });
-
-        const baseUrl = process.env.NODE_ENV === 'production'
-            ? ''
-            : 'http://localhost:5001';
-        const url = `${baseUrl}/api/ingestion/run?days=${importDays}&token=${user.token}`;
-        const eventSource = new EventSource(url);
-        eventSourceRef.current = eventSource;
-
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const { type, payload } = data;
-
-            if (type === 'status') setImportStatus(payload);
-            else if (type === 'progress') setImportProgress(payload);
-            else if (type === 'error') {
-                toast.error(payload);
-                setImportStatus(`Error: ${payload}`);
-                eventSource.close();
-                setIsImporting(false);
-            } else if (type === 'done') {
-                setIsImporting(false);
-                eventSource.close();
-            }
-        };
-
-        eventSource.onerror = () => {
-            toast.error("Connection to server failed. Data import stopped.");
-            setIsImporting(false);
-            setImportStatus('Connection Error. Please try again.');
-            eventSource.close();
-        };
     };
     
     const handleForceLogout = async () => {
@@ -197,7 +246,7 @@ const UserSettingsPage = () => {
                         {isImporting ? 'Importing...' : 'Run Manual Import'}
                     </button>
                 </div>
-                {isImporting && (
+                {(isImporting || jobDetails?.status === 'completed' || jobDetails?.status === 'failed') && (
                     <div className="space-y-2 pt-4 border-t border-border-color">
                         <p className="text-sm font-medium text-text-secondary">{importStatus}</p>
                         <progress 
@@ -207,6 +256,11 @@ const UserSettingsPage = () => {
                         >
                             {importProgress.value}%
                         </progress>
+                        <div className="h-40 bg-surface-muted rounded-lg p-2 overflow-y-auto">
+                            <pre className="text-xs text-text-muted whitespace-pre-wrap">
+                                {importLog.join('\n')}
+                            </pre>
+                        </div>
                     </div>
                 )}
             </div>

@@ -10,6 +10,7 @@ import hashlib
 import subprocess
 import json
 import requests
+import threading
 from datetime import timedelta, datetime
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory, Response
@@ -39,6 +40,10 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=1)
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "query_string"]
 app.config["JWT_QUERY_STRING_NAME"] = "token"
 jwt = JWTManager(app)
+
+# --- In-memory store for manual ingestion jobs ---
+manual_import_jobs = {}
+manual_import_jobs_lock = threading.Lock()
 
 # --- Encryption Setup ---
 fernet = None
@@ -323,29 +328,91 @@ def save_admin_settings():
         app.logger.error(f"Failed to save admin settings: {e}", exc_info=True)
         return jsonify({"error": "Failed to save admin settings."}), 500
 
-@app.route("/api/ingestion/run", methods=['GET'])
+def _run_manual_ingestion_job(user_id, days):
+    """
+    Runs the ingestion process in a background thread for a single user
+    and updates the in-memory job store.
+    """
+    with app.app_context():
+        job_status = {
+            "status": "running",
+            "progress": {"value": 0, "max": 100},
+            "log": ["Job started..."],
+            "start_time": datetime.utcnow().isoformat(),
+            "end_time": None,
+            "error": None
+        }
+        with manual_import_jobs_lock:
+            manual_import_jobs[user_id] = job_status
+
+        try:
+            app.logger.info(f"Starting manual ingestion for user {user_id} for {days} days.")
+            for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days):
+                with manual_import_jobs_lock:
+                    if event_type == 'status':
+                        job_status['log'].append(data)
+                    elif event_type == 'progress':
+                        job_status['progress'] = data
+                    elif event_type == 'error':
+                        job_status['status'] = 'failed'
+                        job_status['error'] = data
+                        job_status['log'].append(f"ERROR: {data}")
+                    elif event_type == 'done':
+                        job_status['log'].append(data)
+            
+            # If the generator finishes without error, mark as completed
+            with manual_import_jobs_lock:
+                if job_status['status'] == 'running':
+                    job_status['status'] = 'completed'
+
+        except Exception as e:
+            app.logger.error(f"Manual ingestion job failed for user {user_id}: {e}", exc_info=True)
+            with manual_import_jobs_lock:
+                job_status['status'] = 'failed'
+                job_status['error'] = str(e)
+        finally:
+            with manual_import_jobs_lock:
+                job_status['end_time'] = datetime.utcnow().isoformat()
+            app.logger.info(f"Manual ingestion job finished for user {user_id} with status: {job_status['status']}")
+
+
+@app.route("/api/ingestion/run", methods=['POST'])
 @jwt_required()
 def run_ingestion_route():
-    days = request.args.get('days', 60, type=int)
     current_user_id = get_jwt_identity()
+    data = request.get_json()
+    days = data.get('days', 60)
 
-    def generate_events():
-        app.logger.info(f"[SSE] Stream opened for ingestion run for user {current_user_id} ({days} days).")
-        try:
-            for event_type, data in run_ingestion_generator(user_id=current_user_id, manual_days_override=days):
-                event_data = json.dumps({"type": event_type, "payload": data})
-                yield f"data: {event_data}\n\n"
-        except Exception as e:
-            app.logger.error(f"[SSE] An error occurred during the ingestion stream: {e}", exc_info=True)
-            error_data = json.dumps({"type": "error", "payload": str(e)})
-            yield f"data: {error_data}\n\n"
-        finally:
-            app.logger.info("[SSE] Stream closed for ingestion run.")
-            
-    response = Response(generate_events(), mimetype='text/event-stream')
-    response.headers['Cache-Control'] = 'no-cache'
-    response.headers['X-Accel-Buffering'] = 'no'
-    return response
+    with manual_import_jobs_lock:
+        if manual_import_jobs.get(current_user_id, {}).get('status') == 'running':
+            return jsonify({"error": "An import is already in progress for this user."}), 409
+
+        # Clean up old job data before starting a new one
+        manual_import_jobs.pop(current_user_id, None)
+
+    # Start the ingestion in a background thread
+    thread = threading.Thread(target=_run_manual_ingestion_job, args=(current_user_id, days))
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({"message": "Manual import process started."}), 202
+
+
+@app.route("/api/ingestion/manual/status", methods=['GET'])
+@jwt_required()
+def get_manual_ingestion_status():
+    current_user_id = get_jwt_identity()
+    with manual_import_jobs_lock:
+        job_status = manual_import_jobs.get(current_user_id)
+
+    if not job_status:
+        return jsonify(None)
+
+    # If job is completed or failed, remove it after some time to conserve memory
+    # For this implementation, we'll let the user clear it by starting a new job.
+    # A more robust solution could use a TTL cache.
+    return jsonify(job_status)
+
 
 @app.route("/api/amazon-logout", methods=['POST'])
 @jwt_required()
