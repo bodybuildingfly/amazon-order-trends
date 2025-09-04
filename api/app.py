@@ -9,7 +9,8 @@ import base64
 import hashlib
 import subprocess
 import json
-from datetime import timedelta
+import requests
+from datetime import timedelta, datetime
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
@@ -356,12 +357,50 @@ def amazon_logout():
         app.logger.error(f"Amazon logout command failed: {e}", exc_info=True)
         return jsonify({"error": "Failed to execute Amazon logout command."}), 500
 
-def _run_scheduled_ingestion_job(job_id):
+def send_discord_notification(webhook_url, title, description, color, log_messages):
+    """Sends a formatted notification to a Discord webhook."""
+    if not webhook_url:
+        return
+
+    # Truncate log messages to fit within Discord's description limits (4096 chars)
+    log_content = "\n".join(log_messages)
+    if len(log_content) > 3800:
+        log_content = log_content[:3800] + "\n... (log truncated)"
+    
+    full_description = description + f"\n\n**Verbose Log:**\n```\n{log_content}\n```"
+    
+    embed = {
+        "title": title,
+        "description": full_description,
+        "color": color,
+        "footer": {
+            "text": f"Report generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        }
+    }
+
+    try:
+        app.logger.info(f"Sending Discord notification to {webhook_url[:30]}...")
+        response = requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+        app.logger.info(f"Successfully sent Discord notification.")
+    except requests.exceptions.RequestException as e:
+        # Log the exception and the response body if available
+        error_message = f"Failed to send Discord notification: {e}"
+        if e.response is not None:
+            error_message += f"\nResponse Status Code: {e.response.status_code}"
+            error_message += f"\nResponse Body: {e.response.text}"
+        app.logger.error(error_message)
+
+def _run_scheduled_ingestion_job(job_id, triggered_by_user_id=None):
     """
     Runs the ingestion process for all enabled users and yields progress updates.
     This is a generator function.
+    If triggered_by_user_id is provided, it will send a Discord notification
+    to that user upon completion.
     """
     with app.app_context():
+        details = {}
+        job_failed = False
         try:
             # 1. Get users and initialize job details
             with get_db_cursor(commit=True) as cur:
@@ -398,8 +437,10 @@ def _run_scheduled_ingestion_job(job_id):
 
                 try:
                     for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=3):
-                        log_entry = f"{event_type}: {data}"
-                        details['users'][user_id]['log'].append(log_entry)
+                        # Add to log for webhook, but filter out progress updates
+                        if event_type != 'progress':
+                            log_entry = f"{event_type}: {data}"
+                            details['users'][user_id]['log'].append(log_entry)
                     details['users'][user_id]['status'] = 'completed'
                 except Exception as e:
                     app.logger.error(f"Ingestion failed for user {user_id} in job {job_id}: {e}", exc_info=True)
@@ -420,15 +461,78 @@ def _run_scheduled_ingestion_job(job_id):
             yield {'type': 'job_update', 'payload': {'status': 'completed', 'progress': progress, 'details': details}}
 
         except Exception as e:
+            job_failed = True
             app.logger.error(f"Scheduled ingestion job {job_id} failed: {e}", exc_info=True)
+            # Update details with the overarching error
+            if 'error' not in details: details['error'] = 'Job failed during initialization.'
             with get_db_cursor(commit=True) as cur:
-                cur.execute("UPDATE ingestion_jobs SET status = 'failed', details = %s WHERE id = %s", (json.dumps({'error': str(e)}), job_id))
+                cur.execute("UPDATE ingestion_jobs SET status = 'failed', details = %s WHERE id = %s", (json.dumps(details), job_id))
             yield {'type': 'error', 'payload': str(e)}
+        finally:
+            # 4. Send notification if manually triggered
+            app.logger.info(f"Notification check for job {job_id}. Triggered by user: {triggered_by_user_id}")
+            if triggered_by_user_id:
+                try:
+                    with get_db_cursor() as cur:
+                        cur.execute(
+                            "SELECT discord_webhook_url, discord_notification_preference FROM user_settings WHERE user_id = %s",
+                            (triggered_by_user_id,)
+                        )
+                        settings = cur.fetchone()
+                    
+                    app.logger.info(f"Found settings for user {triggered_by_user_id}: {settings}")
+
+                    if settings:
+                        webhook_url, pref = settings
+                        app.logger.info(f"Webhook URL: '{webhook_url}', Preference: '{pref}'")
+                        
+                        overall_status_is_error = job_failed or any(u.get('status') == 'failed' for u in details.get('users', {}).values())
+                        app.logger.info(f"Overall job status is_error: {overall_status_is_error}")
+
+                        # For a manually triggered run, always send a notification if a webhook is configured.
+                        should_send = bool(webhook_url)
+                        app.logger.info(f"Final decision to send notification: {should_send}")
+
+                        if should_send:
+                            app.logger.info(f"Preparing to send notification for job {job_id}...")
+                            # Consolidate logs from all users
+                            all_logs = []
+                            if details.get('error'):
+                                all_logs.append(f"CRITICAL JOB ERROR: {details['error']}\n")
+
+                            for uid, u_details in details.get('users', {}).items():
+                                username = u_details.get('username', 'Unknown User')
+                                status = u_details.get('status', 'unknown').upper()
+                                all_logs.append(f"--- User: {username} | Status: {status} ---")
+                                all_logs.extend(u_details.get('log', ['No log entries.']))
+                                if u_details.get('status') == 'failed':
+                                    all_logs.append(f"ERROR: {u_details.get('error', 'Unknown error')}")
+                                all_logs.append("")
+
+                            if overall_status_is_error:
+                                title = "Scheduled Ingestion Run Finished with Errors"
+                                description = "The scheduled data ingestion process ran, but one or more users failed."
+                                color = 15158332  # Red
+                            else:
+                                title = "Scheduled Ingestion Run Successful"
+                                description = "The scheduled data ingestion process completed for all users."
+                                color = 3066993  # Green
+                            
+                            send_discord_notification(webhook_url, title, description, color, all_logs)
+                    else:
+                        app.logger.info(f"No settings found for triggering user {triggered_by_user_id}, no notification will be sent.")
+                except Exception as e:
+                    app.logger.error(f"Failed to send Discord notification for job {job_id}: {e}", exc_info=True)
+            else:
+                app.logger.info(f"Job was not manually triggered, skipping notification.")
+
 
 @app.route("/api/scheduler/run", methods=['GET'])
 @admin_required()
 def run_scheduled_ingestion_stream():
     """Manually triggers the scheduled ingestion job and streams progress."""
+    current_user_id = get_jwt_identity()
+
     def generate_events():
         job_id = None
         with app.app_context():
@@ -442,7 +546,8 @@ def run_scheduled_ingestion_stream():
                 
                 app.logger.info(f"Starting manual stream for scheduled ingestion job {job_id}.")
                 
-                for update in _run_scheduled_ingestion_job(job_id):
+                # Pass the admin's user ID to the job runner
+                for update in _run_scheduled_ingestion_job(job_id, triggered_by_user_id=current_user_id):
                     yield f"data: {json.dumps(update)}\n\n"
 
             except Exception as e:

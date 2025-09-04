@@ -77,41 +77,12 @@ def extract_asin(url):
     match = re.search(r'/(dp|gp/product)/(\w{10})', url)
     return match.group(2) if match else None
 
-def send_discord_notification(webhook_url, title, description, color, log_messages):
-    """Sends a formatted notification to a Discord webhook."""
-    if not webhook_url:
-        return
-
-    # Truncate log messages to fit within Discord's embed limits
-    log_content = "\n".join(log_messages)
-    if len(log_content) > 1900:
-        log_content = log_content[:1900] + "\n... (log truncated)"
-    
-    embed = {
-        "title": title,
-        "description": description,
-        "color": color,
-        "fields": [{
-            "name": "Verbose Log",
-            "value": f"```\n{log_content}\n```"
-        }],
-        "footer": {
-            "text": f"Report generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
-        }
-    }
-
-    try:
-        requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to send Discord notification: {e}")
-
 def main(user_id, manual_days_override=None):
     """
     Generator function to run the ingestion process and yield progress events.
     :param user_id: The UUID of the user for whom to run ingestion.
     :param manual_days_override: An integer specifying the number of days to fetch.
     """
-    logs = []
     error_occurred = False
     settings = {}
     session = None
@@ -125,9 +96,6 @@ def main(user_id, manual_days_override=None):
         else:
             logger.info(message)
         
-        # Ensure message is a string before appending
-        log_message = str(message)
-        logs.append(f"[{event.upper()}] {log_message}")
         yield event, message
 
 
@@ -156,7 +124,6 @@ def main(user_id, manual_days_override=None):
 
         if days_to_fetch <= 0:
             yield from log_status("All orders are up to date.")
-            # We return here, so the finally block will execute for notification.
             return
 
         yield from log_status(f"Logging into Amazon as {settings['AMAZON_EMAIL']}...")
@@ -198,7 +165,7 @@ def main(user_id, manual_days_override=None):
             error_occurred = True
             log_msg = f"All retries failed for order {order_num}."
             logger.error(log_msg)
-            logs.append(f"[ERROR] {log_msg}")
+            # This log is not passed up, so it won't be in the webhook. That's acceptable.
             return None
 
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -245,27 +212,7 @@ def main(user_id, manual_days_override=None):
     finally:
         if session:
             session.logout()
-            logs.append("[INFO] Amazon session logged out.")
-
-        webhook_url = settings.get('DISCORD_WEBHOOK_URL')
-        pref = settings.get('DISCORD_NOTIFICATION_PREFERENCE', 'off')
-
-        should_send = (
-            webhook_url and
-            (pref == 'on_all' or (pref == 'on_error' and error_occurred))
-        )
-
-        if should_send:
-            if error_occurred:
-                title = "Ingestion Run Failed"
-                description = "The scheduled data ingestion process encountered one or more errors."
-                color = 15158332  # Red
-            else:
-                title = "Ingestion Run Successful"
-                description = "The scheduled data ingestion process completed without any errors."
-                color = 3066993  # Green
-            
-            send_discord_notification(webhook_url, title, description, color, logs)
+            yield from yield_and_log("status", "Amazon session logged out.")
 
 # --- Standalone Execution Logic ---
 if __name__ == "__main__":

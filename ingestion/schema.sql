@@ -80,6 +80,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_ingestion_jobs_updated_at ON ingestion_jobs;
 CREATE TRIGGER update_ingestion_jobs_updated_at
 BEFORE UPDATE ON ingestion_jobs
 FOR EACH ROW
