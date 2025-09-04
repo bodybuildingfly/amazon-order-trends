@@ -144,10 +144,24 @@ def main(user_id, manual_days_override=None):
         if not order_numbers:
             yield from log_status("No new orders found in the specified date range.")
             return
+
+        yield from log_status(f"Found {len(order_numbers)} orders in the date range. Checking for new orders to import...")
+        
+        with get_db_cursor() as cur:
+            cur.execute("SELECT order_id FROM orders WHERE user_id = %s AND order_id = ANY(%s)", (user_id, list(order_numbers)))
+            existing_orders = {row[0] for row in cur.fetchall()}
+        
+        if existing_orders:
+            yield from log_status(f"Found {len(existing_orders)} orders already in the database. Filtering them out.")
+            order_numbers.difference_update(existing_orders)
+
+        if not order_numbers:
+            yield from log_status("All orders are up to date. No new orders to import.")
+            return
         
         total_orders = len(order_numbers)
         yield from yield_and_log("progress", {"value": 0, "max": total_orders})
-        yield from log_status(f"Found {total_orders} unique orders to process...")
+        yield from log_status(f"Found {total_orders} new orders to process...")
 
         amazon_orders = AmazonOrders(session)
         processed_count = 0
