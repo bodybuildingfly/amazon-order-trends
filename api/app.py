@@ -356,17 +356,129 @@ def amazon_logout():
         app.logger.error(f"Amazon logout command failed: {e}", exc_info=True)
         return jsonify({"error": "Failed to execute Amazon logout command."}), 500
 
-@app.route("/api/scheduler/run", methods=['POST'])
+def _run_scheduled_ingestion_job(job_id):
+    """
+    Runs the ingestion process for all enabled users and yields progress updates.
+    This is a generator function.
+    """
+    with app.app_context():
+        try:
+            # 1. Get users and initialize job details
+            with get_db_cursor(commit=True) as cur:
+                cur.execute(
+                    """
+                    SELECT u.id, u.username FROM users u
+                    JOIN user_settings s ON u.id = s.user_id
+                    WHERE s.enable_scheduled_ingestion = TRUE
+                    """
+                )
+                users_to_process = cur.fetchall()
+
+            user_map = {str(user_id): username for user_id, username in users_to_process}
+            user_ids = list(user_map.keys())
+            
+            progress = {"current": 0, "total": len(user_ids)}
+            details = {'users': {uid: {'status': 'pending', 'username': user_map[uid], 'log': []} for uid in user_ids}}
+
+            with get_db_cursor(commit=True) as cur:
+                cur.execute(
+                    "UPDATE ingestion_jobs SET status = 'running', progress = %s, details = %s WHERE id = %s",
+                    (json.dumps(progress), json.dumps(details), job_id)
+                )
+            yield {'type': 'job_update', 'payload': {'id': str(job_id), 'status': 'running', 'progress': progress, 'details': details}}
+
+            # 2. Loop through users and run ingestion
+            for i, user_id in enumerate(user_ids):
+                details['users'][user_id]['status'] = 'running'
+                progress['current'] = i
+                
+                with get_db_cursor(commit=True) as cur:
+                    cur.execute("UPDATE ingestion_jobs SET progress = %s, details = %s WHERE id = %s", (json.dumps(progress), json.dumps(details), job_id))
+                yield {'type': 'job_update', 'payload': {'progress': progress, 'details': details}}
+
+                try:
+                    for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=3):
+                        log_entry = f"{event_type}: {data}"
+                        details['users'][user_id]['log'].append(log_entry)
+                    details['users'][user_id]['status'] = 'completed'
+                except Exception as e:
+                    app.logger.error(f"Ingestion failed for user {user_id} in job {job_id}: {e}", exc_info=True)
+                    details['users'][user_id]['status'] = 'failed'
+                    details['users'][user_id]['error'] = str(e)
+                
+                with get_db_cursor(commit=True) as cur:
+                    cur.execute("UPDATE ingestion_jobs SET details = %s WHERE id = %s", (json.dumps(details), job_id))
+                yield {'type': 'job_update', 'payload': {'details': details}}
+            
+            # 3. Finalize job
+            progress['current'] = len(user_ids)
+            with get_db_cursor(commit=True) as cur:
+                cur.execute(
+                    "UPDATE ingestion_jobs SET status = 'completed', progress = %s, details = %s WHERE id = %s",
+                    (json.dumps(progress), json.dumps(details), job_id)
+                )
+            yield {'type': 'job_update', 'payload': {'status': 'completed', 'progress': progress, 'details': details}}
+
+        except Exception as e:
+            app.logger.error(f"Scheduled ingestion job {job_id} failed: {e}", exc_info=True)
+            with get_db_cursor(commit=True) as cur:
+                cur.execute("UPDATE ingestion_jobs SET status = 'failed', details = %s WHERE id = %s", (json.dumps({'error': str(e)}), job_id))
+            yield {'type': 'error', 'payload': str(e)}
+
+@app.route("/api/scheduler/run", methods=['GET'])
 @admin_required()
-def run_scheduler_manually():
-    """Manually triggers the scheduled ingestion job."""
+def run_scheduled_ingestion_stream():
+    """Manually triggers the scheduled ingestion job and streams progress."""
+    def generate_events():
+        job_id = None
+        with app.app_context():
+            try:
+                with get_db_cursor(commit=True) as cur:
+                    cur.execute(
+                        "INSERT INTO ingestion_jobs (job_type, status) VALUES (%s, %s) RETURNING id",
+                        ('scheduled', 'pending')
+                    )
+                    job_id = cur.fetchone()[0]
+                
+                app.logger.info(f"Starting manual stream for scheduled ingestion job {job_id}.")
+                
+                for update in _run_scheduled_ingestion_job(job_id):
+                    yield f"data: {json.dumps(update)}\n\n"
+
+            except Exception as e:
+                app.logger.error(f"Failed to start scheduled ingestion stream: {e}", exc_info=True)
+                yield f"data: {json.dumps({'type': 'error', 'payload': str(e)})}\n\n"
+            finally:
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                app.logger.info(f"[SSE] Stream closed for job {job_id}.")
+
+    response = Response(generate_events(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+@app.route('/api/ingestion/jobs/latest', methods=['GET'])
+@admin_required()
+def get_latest_ingestion_job():
+    """Returns the most recent 'scheduled' ingestion job."""
     try:
-        scheduler.run_job('scheduled_ingestion')
-        app.logger.info("Manually triggered the scheduled ingestion job.")
-        return jsonify({"message": "Scheduled ingestion job has been triggered successfully."}), 200
+        with get_db_cursor() as cur:
+            cur.execute("""
+                SELECT id, job_type, status, progress, details, created_at, updated_at
+                FROM ingestion_jobs
+                WHERE job_type = 'scheduled'
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+            job = cur.fetchone()
+            if job:
+                job_dict = dict(zip([desc[0] for desc in cur.description], job))
+                return jsonify(job_dict)
+            else:
+                return jsonify(None)
     except Exception as e:
-        app.logger.error(f"Failed to manually trigger scheduled job: {e}", exc_info=True)
-        return jsonify({"error": "Failed to trigger the scheduled job."}), 500
+        app.logger.error(f"Failed to fetch latest ingestion job: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch latest job."}), 500
 
 @app.route("/api/items")
 @jwt_required()
@@ -516,32 +628,27 @@ def get_repeat_items():
 @scheduler.task('cron', id='scheduled_ingestion', hour=1, minute=0)
 def scheduled_ingestion():
     """
-    Runs daily to fetch the last 3 days of orders for users who have the feature enabled.
+    Runs daily to fetch orders for users who have the feature enabled.
     """
-    app.logger.info("Starting scheduled ingestion job...")
+    app.logger.info("Starting scheduled ingestion cron job...")
+    job_id = None
     with app.app_context():
         try:
-            with get_db_cursor() as cur:
+            with get_db_cursor(commit=True) as cur:
                 cur.execute(
-                    "SELECT user_id FROM user_settings WHERE enable_scheduled_ingestion = TRUE"
+                    "INSERT INTO ingestion_jobs (job_type, status) VALUES (%s, %s) RETURNING id",
+                    ('scheduled', 'pending')
                 )
-                user_ids = [row[0] for row in cur.fetchall()]
+                job_id = cur.fetchone()[0]
             
-            app.logger.info(f"Found {len(user_ids)} users for scheduled ingestion.")
-
-            for user_id in user_ids:
-                try:
-                    app.logger.info(f"Running ingestion for user {user_id}...")
-                    # The generator needs to be consumed for the code to execute
-                    for event, data in run_ingestion_generator(user_id=user_id, manual_days_override=3):
-                        if event == 'error':
-                            app.logger.error(f"Error during ingestion for user {user_id}: {data}")
-                except Exception as e:
-                    app.logger.error(f"Failed to run ingestion for user {user_id}: {e}", exc_info=True)
-
+            # Consume the generator to execute the job
+            for _ in _run_scheduled_ingestion_job(job_id):
+                pass
+            
+            app.logger.info(f"Scheduled ingestion cron job {job_id} finished.")
         except Exception as e:
-            app.logger.error(f"An error occurred during the scheduled ingestion job: {e}", exc_info=True)
-    app.logger.info("Scheduled ingestion job finished.")
+            # The error is already logged and status set inside the generator, but log here too.
+            app.logger.error(f"An error occurred during the scheduled ingestion cron job wrapper: {e}", exc_info=True)
 
 
 # --- Serve React App ---

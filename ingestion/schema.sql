@@ -59,3 +59,28 @@ CREATE TABLE IF NOT EXISTS items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_asin ON items(asin);
+
+-- Table to store information and status about ingestion jobs
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_type VARCHAR(50) NOT NULL, -- e.g., 'scheduled', 'manual'
+    status VARCHAR(20) NOT NULL, -- e.g., 'running', 'completed', 'failed'
+    progress JSONB, -- e.g., {"current": 5, "total": 10}
+    details JSONB, -- e.g., {"log": [...], "users": {"user_id": "status"}}
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trigger to automatically update the updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_ingestion_jobs_updated_at
+BEFORE UPDATE ON ingestion_jobs
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
