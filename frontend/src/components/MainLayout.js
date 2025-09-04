@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 // --- Icon Imports ---
 const TableIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.37 2.63 14 7l-1.5-1.5" /><path d="m21.5 5.5-1.5-1.5" /></svg>;
 const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33-1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>;
+const AdminSettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 21.7c.2.2.5.3.8.3h1.8c.3 0 .6-.1.8-.3l1.2-1.2c.2-.2.3-.5.3-.8v-1.8c0-.3-.1-.6-.3-.8l-1.2-1.2c-.2-.2-.5-.3-.8-.3h-1.8c-.3 0-.6.1-.8.3l-1.2 1.2c-.2.2-.3.5-.3.8v1.8c0 .3.1.6.3.8l1.2 1.2zM14 2.1v3.4M10 2.1v3.4M12 10.6V2.1M4.6 12H2.1M7.9 12H2.1M21.9 12h-2.5M18.6 12h-6.3M6.4 17.8l-2.1-2.1M8.5 13.6l-2.1-2.1M17.6 17.8l2.1-2.1M15.5 13.6l2.1-2.1M12 21.9v-2.5M12 18.6v-6.3"/></svg>;
 const RepeatOrdersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>;
 const UsersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
 
@@ -46,9 +47,12 @@ const MainLayout = ({ children }) => {
                     {/* --- Admin & User Section --- */}
                     <div className="flex-shrink-0 pt-6 border-t border-border-color">
                         <div className="space-y-2 mb-4">
-                             <NavLink to="/settings" icon={<SettingsIcon />}>Settings</NavLink>
+                             <NavLink to="/settings" icon={<SettingsIcon />}>User Settings</NavLink>
                             {user?.role === 'admin' && (
-                                <NavLink to="/user-management" icon={<UsersIcon />}>User Management</NavLink>
+                                <>
+                                    <NavLink to="/admin-settings" icon={<AdminSettingsIcon />}>Admin Settings</NavLink>
+                                    <NavLink to="/user-management" icon={<UsersIcon />}>User Management</NavLink>
+                                </>
                             )}
                         </div>
                         <div className="grid grid-cols-3 items-center">

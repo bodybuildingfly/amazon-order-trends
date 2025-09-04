@@ -3,18 +3,15 @@ import { toast } from 'react-toastify';
 import apiClient from '../api';
 import { useAuth } from '../context/AuthContext';
 
-// --- Helper Components ---
 const Spinner = () => <div className="flex justify-center items-center p-10"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
 
-const SettingsPage = () => {
-    // --- State Management ---
+const UserSettingsPage = () => {
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isConfigured, setIsConfigured] = useState(false);
     const [logoutOutput, setLogoutOutput] = useState('');
     const [importDays, setImportDays] = useState(60);
-
     const [isImporting, setIsImporting] = useState(false);
     const [importStatus, setImportStatus] = useState('');
     const [importProgress, setImportProgress] = useState({ value: 0, max: 100 });
@@ -24,13 +21,10 @@ const SettingsPage = () => {
         amazon_password: '',
         amazon_otp_secret_key: '',
         enable_scheduled_ingestion: false,
-        discord_webhook_url: '',
-        discord_notification_preference: 'off',
     });
     
     const eventSourceRef = useRef(null);
 
-    // --- Data Fetching ---
     useEffect(() => {
         const fetchSettings = async () => {
             setIsLoading(true);
@@ -41,8 +35,6 @@ const SettingsPage = () => {
                     amazon_email: data.amazon_email,
                     amazon_otp_secret_key: data.amazon_otp_secret_key,
                     enable_scheduled_ingestion: data.enable_scheduled_ingestion || false,
-                    discord_webhook_url: data.discord_webhook_url || '',
-                    discord_notification_preference: data.discord_notification_preference || 'off',
                 }));
                 setIsConfigured(data.is_configured);
             } catch (err) {
@@ -61,7 +53,6 @@ const SettingsPage = () => {
         };
     }, []);
 
-    // --- Event Handlers ---
     const handleFormChange = (e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prev => ({
@@ -74,7 +65,7 @@ const SettingsPage = () => {
         e.preventDefault();
         setIsSaving(true);
         try {
-            const { data } = await apiClient.post('/api/settings', formData);
+            const { data } = await apiClient.post('/api/settings/user', formData);
             toast.success(data.message);
             setFormData(prev => ({ ...prev, amazon_password: '' }));
             const settingsRes = await apiClient.get('/api/settings');
@@ -106,11 +97,9 @@ const SettingsPage = () => {
             const data = JSON.parse(event.data);
             const { type, payload } = data;
 
-            if (type === 'status') {
-                setImportStatus(payload);
-            } else if (type === 'progress') {
-                setImportProgress(payload);
-            } else if (type === 'error') {
+            if (type === 'status') setImportStatus(payload);
+            else if (type === 'progress') setImportProgress(payload);
+            else if (type === 'error') {
                 toast.error(payload);
                 setImportStatus(`Error: ${payload}`);
                 eventSource.close();
@@ -139,21 +128,12 @@ const SettingsPage = () => {
         }
     };
 
-    const handleRunScheduler = async () => {
-        try {
-            const { data } = await apiClient.post('/api/scheduler/run');
-            toast.success(data.message);
-        } catch (err) {
-            toast.error(err.response?.data?.error || 'Failed to trigger scheduler.');
-        }
-    };
-
     if (isLoading) return <Spinner />;
 
     return (
         <div className="space-y-8 max-w-3xl mx-auto">
             <div className="bg-surface p-6 rounded-2xl shadow-lg">
-                <h2 className="text-3xl font-semibold text-text-primary mb-6">Application Settings</h2>
+                <h2 className="text-3xl font-semibold text-text-primary mb-6">User Settings</h2>
                 <form onSubmit={handleSaveSettings} className="space-y-6">
                     <div>
                         <label htmlFor="amazon_email" className="form-label">Amazon Email</label>
@@ -184,47 +164,6 @@ const SettingsPage = () => {
                             </span>
                         </label>
                     </div>
-
-                    {user.role === 'admin' && (
-                        <>
-                            <hr className="border-border-color" />
-                            <div>
-                                <h3 className="text-lg font-medium text-text-primary mb-1">Discord Notifications</h3>
-                                <p className="text-sm text-text-muted mb-4">
-                                    Receive notifications in Discord when the scheduled data retrieval runs.
-                                </p>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label htmlFor="discord_webhook_url" className="form-label">Webhook URL</label>
-                                        <input
-                                            type="url"
-                                            name="discord_webhook_url"
-                                            id="discord_webhook_url"
-                                            value={formData.discord_webhook_url}
-                                            onChange={handleFormChange}
-                                            className="form-input"
-                                            placeholder="https://discord.com/api/webhooks/..."
-                                        />
-                                    </div>
-                                    <div>
-                                        <label htmlFor="discord_notification_preference" className="form-label">Notification Frequency</label>
-                                        <select
-                                            name="discord_notification_preference"
-                                            id="discord_notification_preference"
-                                            value={formData.discord_notification_preference}
-                                            onChange={handleFormChange}
-                                            className="form-input"
-                                        >
-                                            <option value="off">Disabled</option>
-                                            <option value="on_error">Notify on Error</option>
-                                            <option value="on_all">Notify on All Runs</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
-
                     <div className="flex justify-end">
                         <button type="submit" disabled={isSaving} className="form-button-primary">
                             {isSaving ? 'Saving...' : 'Save Settings'}
@@ -272,7 +211,7 @@ const SettingsPage = () => {
                 )}
             </div>
             <div className="bg-surface p-6 rounded-2xl shadow-lg">
-                <h3 className="font-semibold text-lg mb-2">Troubleshooting & Admin</h3>
+                <h3 className="font-semibold text-lg mb-2">Troubleshooting</h3>
                 <div className="space-y-4">
                     <div>
                         <p className="text-sm text-text-muted mb-2">
@@ -287,22 +226,10 @@ const SettingsPage = () => {
                             </pre>
                         )}
                     </div>
-                    {user.role === 'admin' && (
-                        <div>
-                            <hr className="border-border-color my-4" />
-                            <p className="text-sm text-text-muted mb-2">
-                                Manually trigger the daily scheduled job to run for all enabled users.
-                            </p>
-                            <button onClick={handleRunScheduler} className="form-button-secondary">
-                                Run Scheduled Ingestion
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
     );
 };
 
-export default SettingsPage;
-
+export default UserSettingsPage;

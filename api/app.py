@@ -244,9 +244,9 @@ def get_settings():
         app.logger.error(f"Failed to get settings: {e}", exc_info=True)
         return jsonify({"error": "Failed to retrieve settings."}), 500
 
-@app.route('/api/settings', methods=['POST'])
+@app.route('/api/settings/user', methods=['POST'])
 @jwt_required()
-def save_settings():
+def save_user_settings():
     data = request.get_json()
     current_user_id = get_jwt_identity()
 
@@ -256,49 +256,71 @@ def save_settings():
         password = data.get('amazon_password')
         otp = data.get('amazon_otp_secret_key')
         enable_scheduled_ingestion = data.get('enable_scheduled_ingestion', False)
-        discord_webhook_url = data.get('discord_webhook_url')
-        discord_notification_preference = data.get('discord_notification_preference', 'off')
 
         with get_db_cursor(commit=True) as cur:
-            # This logic handles both insert and update operations for user settings.
+            # Logic to insert or update user settings
             if password:
-                # If a new password is provided, it must be encrypted.
                 encrypted_password = fernet.encrypt(password.encode('utf-8'))
                 cur.execute("""
-                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         amazon_email = EXCLUDED.amazon_email,
                         amazon_password_encrypted = EXCLUDED.amazon_password_encrypted,
                         amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key,
-                        enable_scheduled_ingestion = EXCLUDED.enable_scheduled_ingestion,
-                        discord_webhook_url = EXCLUDED.discord_webhook_url,
-                        discord_notification_preference = EXCLUDED.discord_notification_preference;
-                """, (current_user_id, email, encrypted_password, otp, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference))
+                        enable_scheduled_ingestion = EXCLUDED.enable_scheduled_ingestion;
+                """, (current_user_id, email, encrypted_password, otp, enable_scheduled_ingestion))
             else:
-                # If no password is provided, update other fields without changing the password.
                 cur.execute("""
                     UPDATE user_settings SET
                         amazon_email = %s,
                         amazon_otp_secret_key = %s,
-                        enable_scheduled_ingestion = %s,
-                        discord_webhook_url = %s,
-                        discord_notification_preference = %s
+                        enable_scheduled_ingestion = %s
                     WHERE user_id = %s;
-                """, (email, otp, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference, current_user_id))
-                
-                # If no row was updated, it means the user is saving settings for the first time
-                # without setting a password, which is not a complete setup.
+                """, (email, otp, enable_scheduled_ingestion, current_user_id))
                 if cur.rowcount == 0:
                     cur.execute("""
-                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference)
-                        VALUES (%s, %s, %s, %s, %s, %s);
-                    """, (current_user_id, email, otp, enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference))
+                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key, enable_scheduled_ingestion)
+                        VALUES (%s, %s, %s, %s);
+                    """, (current_user_id, email, otp, enable_scheduled_ingestion))
 
-        return jsonify({"message": "Settings saved successfully."}), 200
+        return jsonify({"message": "User settings saved successfully."}), 200
     except Exception as e:
-        app.logger.error(f"Failed to save settings: {e}", exc_info=True)
-        return jsonify({"error": "Failed to save settings."}), 500
+        app.logger.error(f"Failed to save user settings: {e}", exc_info=True)
+        return jsonify({"error": "Failed to save user settings."}), 500
+
+@app.route('/api/settings/admin', methods=['POST'])
+@admin_required()
+def save_admin_settings():
+    data = request.get_json()
+    # In a multi-user admin scenario, you might get a user_id from the request.
+    # For now, we assume an admin is editing their own settings or a global setting.
+    # As discord settings are per-user, we'll get the current user's ID.
+    current_user_id = get_jwt_identity()
+    
+    try:
+        discord_webhook_url = data.get('discord_webhook_url')
+        discord_notification_preference = data.get('discord_notification_preference', 'off')
+
+        with get_db_cursor(commit=True) as cur:
+            cur.execute("""
+                UPDATE user_settings SET
+                    discord_webhook_url = %s,
+                    discord_notification_preference = %s
+                WHERE user_id = %s;
+            """, (discord_webhook_url, discord_notification_preference, current_user_id))
+            if cur.rowcount == 0:
+                # This assumes a user_settings row has been created before saving admin settings.
+                # This is a reasonable assumption if the user has to save user settings first.
+                cur.execute("""
+                    INSERT INTO user_settings (user_id, discord_webhook_url, discord_notification_preference)
+                    VALUES (%s, %s, %s);
+                """, (current_user_id, discord_webhook_url, discord_notification_preference))
+        
+        return jsonify({"message": "Admin settings saved successfully."}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to save admin settings: {e}", exc_info=True)
+        return jsonify({"error": "Failed to save admin settings."}), 500
 
 @app.route("/api/ingestion/run", methods=['GET'])
 @jwt_required()
@@ -325,7 +347,7 @@ def run_ingestion_route():
     return response
 
 @app.route("/api/amazon-logout", methods=['POST'])
-@admin_required()
+@jwt_required()
 def amazon_logout():
     try:
         result = subprocess.run(["amazon-orders", "logout"], capture_output=True, text=True, check=True)

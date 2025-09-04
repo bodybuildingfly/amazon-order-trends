@@ -7,7 +7,8 @@ import 'react-toastify/dist/ReactToastify.css';
 import InteractiveDataTable from './components/InteractiveDataTable';
 import RepeatOrdersTable from './components/RepeatOrdersTable'; // Import the new component
 import LoginPage from './components/LoginPage';
-import SettingsPage from './components/SettingsPage';
+import UserSettingsPage from './components/UserSettingsPage';
+import AdminSettingsPage from './components/AdminSettingsPage';
 import UserManagementPage from './components/UserManagementPage';
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -46,9 +47,12 @@ function App() {
                                 <Routes>
                                     <Route path="/table" element={<InteractiveDataTable />} />
                                     <Route path="/repeat-orders" element={<RepeatOrdersTable />} />
-                                    <Route path="/settings" element={<SettingsPage />} />
+                                    <Route path="/settings" element={<UserSettingsPage />} />
                                     {user?.role === 'admin' && (
-                                        <Route path="/user-management" element={<UserManagementPage />} />
+                                        <>
+                                            <Route path="/user-management" element={<UserManagementPage />} />
+                                            <Route path="/admin-settings" element={<AdminSettingsPage />} />
+                                        </>
                                     )}
                                     {/* Default route inside the main layout */}
                                     <Route path="/" element={<Navigate to="/table" replace />} />
