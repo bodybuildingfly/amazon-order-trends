@@ -1,7 +1,7 @@
 import json
 import threading
 from datetime import datetime
-from flask import current_app
+from flask import Flask, current_app
 
 from shared.db import get_db_cursor
 from ingestion.ingestion_script import main as run_ingestion_generator
@@ -11,52 +11,51 @@ from api.services.notification_service import send_discord_notification
 manual_import_jobs = {}
 manual_import_jobs_lock = threading.Lock()
 
-def run_manual_ingestion_job(user_id, days):
+def run_manual_ingestion_job(app: Flask, user_id: str, days: int):
     """
     Runs the ingestion process in a background thread for a single user
     and updates the in-memory job store.
     """
-    app = current_app._get_current_object()
-    
-    job_status = {
-        "status": "running",
-        "progress": {"value": 0, "max": 100},
-        "log": ["Job started..."],
-        "start_time": datetime.utcnow().isoformat(),
-        "end_time": None,
-        "error": None
-    }
-    with manual_import_jobs_lock:
-        manual_import_jobs[user_id] = job_status
+    with app.app_context():
+        job_status = {
+            "status": "running",
+            "progress": {"value": 0, "max": 100},
+            "log": ["Job started..."],
+            "start_time": datetime.utcnow().isoformat(),
+            "end_time": None,
+            "error": None
+        }
+        with manual_import_jobs_lock:
+            manual_import_jobs[user_id] = job_status
 
-    try:
-        app.logger.info(f"Starting manual ingestion for user {user_id} for {days} days.")
-        for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days):
+        try:
+            app.logger.info(f"Starting manual ingestion for user {user_id} for {days} days.")
+            for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days):
+                with manual_import_jobs_lock:
+                    if event_type == 'status':
+                        job_status['log'].append(data)
+                    elif event_type == 'progress':
+                        job_status['progress'] = data
+                    elif event_type == 'error':
+                        job_status['status'] = 'failed'
+                        job_status['error'] = data
+                        job_status['log'].append(f"ERROR: {data}")
+                    elif event_type == 'done':
+                        job_status['log'].append(data)
+            
             with manual_import_jobs_lock:
-                if event_type == 'status':
-                    job_status['log'].append(data)
-                elif event_type == 'progress':
-                    job_status['progress'] = data
-                elif event_type == 'error':
-                    job_status['status'] = 'failed'
-                    job_status['error'] = data
-                    job_status['log'].append(f"ERROR: {data}")
-                elif event_type == 'done':
-                    job_status['log'].append(data)
-        
-        with manual_import_jobs_lock:
-            if job_status['status'] == 'running':
-                job_status['status'] = 'completed'
+                if job_status['status'] == 'running':
+                    job_status['status'] = 'completed'
 
-    except Exception as e:
-        app.logger.error(f"Manual ingestion job failed for user {user_id}: {e}", exc_info=True)
-        with manual_import_jobs_lock:
-            job_status['status'] = 'failed'
-            job_status['error'] = str(e)
-    finally:
-        with manual_import_jobs_lock:
-            job_status['end_time'] = datetime.utcnow().isoformat()
-        app.logger.info(f"Manual ingestion job finished for user {user_id} with status: {job_status['status']}")
+        except Exception as e:
+            app.logger.error(f"Manual ingestion job failed for user {user_id}: {e}", exc_info=True)
+            with manual_import_jobs_lock:
+                job_status['status'] = 'failed'
+                job_status['error'] = str(e)
+        finally:
+            with manual_import_jobs_lock:
+                job_status['end_time'] = datetime.utcnow().isoformat()
+            app.logger.info(f"Manual ingestion job finished for user {user_id} with status: {job_status['status']}")
 
 
 def run_scheduled_ingestion_job_stream(job_id, triggered_by_user_id=None):

@@ -74,7 +74,7 @@ const UserSettingsPage = () => {
     useEffect(() => {
         setIsImporting(jobDetails?.status === 'running');
 
-        if (jobDetails?.status !== prevJobStatus) {
+        if (jobDetails && jobDetails.status !== prevJobStatus) {
             if (jobDetails.status === 'completed') {
                 toast.success('Manual import finished successfully.');
             } else if (jobDetails.status === 'failed') {

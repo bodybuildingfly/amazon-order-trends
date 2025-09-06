@@ -28,7 +28,8 @@ def run_ingestion_route():
 
         manual_import_jobs.pop(current_user_id, None)
 
-    thread = threading.Thread(target=run_manual_ingestion_job, args=(current_user_id, days))
+    app = current_app._get_current_object()
+    thread = threading.Thread(target=run_manual_ingestion_job, args=(app, current_user_id, days))
     thread.daemon = True
     thread.start()
 
