@@ -14,13 +14,7 @@ import UserManagementPage from './components/UserManagementPage';
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
-
-// --- Helper Components ---
-const LoadingSpinner = () => (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <div className="w-16 h-16 border-8 border-primary border-t-transparent rounded-full animate-spin"></div>
-    </div>
-);
+import LoadingSpinner from './components/common/LoadingSpinner';
 
 /**
  * @description The root component that handles routing.
@@ -40,29 +34,27 @@ function App() {
                     path="/login"
                     element={isAuthenticated ? <Navigate to="/" /> : <LoginPage />}
                 />
+
+                {/* Protected Routes */}
                 <Route
-                    path="/*"
                     element={
                         <ProtectedRoute>
-                            <MainLayout>
-                                <Routes>
-                                    <Route path="/dashboard" element={<Dashboard />} />
-                                    <Route path="/table" element={<InteractiveDataTable />} />
-                                    <Route path="/repeat-orders" element={<RepeatOrdersTable />} />
-                                    <Route path="/settings" element={<UserSettingsPage />} />
-                                    {user?.role === 'admin' && (
-                                        <>
-                                            <Route path="/user-management" element={<UserManagementPage />} />
-                                            <Route path="/admin-settings" element={<AdminSettingsPage />} />
-                                        </>
-                                    )}
-                                    {/* Default route inside the main layout */}
-                                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                                </Routes>
-                            </MainLayout>
+                            <MainLayout />
                         </ProtectedRoute>
                     }
-                />
+                >
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/table" element={<InteractiveDataTable />} />
+                    <Route path="/repeat-orders" element={<RepeatOrdersTable />} />
+                    <Route path="/settings" element={<UserSettingsPage />} />
+                    {user?.role === 'admin' && (
+                        <>
+                            <Route path="/user-management" element={<UserManagementPage />} />
+                            <Route path="/admin-settings" element={<AdminSettingsPage />} />
+                        </>
+                    )}
+                </Route>
             </Routes>
         </>
     );

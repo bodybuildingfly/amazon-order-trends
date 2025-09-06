@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, Outlet } from 'react-router-dom';
 
 // --- Component & Context Imports ---
 import ThemeToggle from './ThemeToggle';
@@ -71,7 +71,7 @@ const MainLayout = ({ children }) => {
 
                 {/* --- Main Content Area --- */}
                 <main className="col-span-9 p-8 overflow-y-auto h-screen">
-                    {children}
+                    <Outlet />
                 </main>
             </div>
         </div>

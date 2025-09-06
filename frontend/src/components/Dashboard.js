@@ -2,16 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { Line } from 'react-chartjs-2';
 import { Chart, registerables } from 'chart.js';
 import 'chartjs-adapter-date-fns';
+import { toast } from 'react-toastify';
 import api from '../api';
+import StatCard from './common/StatCard';
+import SkeletonLoader from './common/SkeletonLoader';
 
 Chart.register(...registerables);
 
-const StatCard = ({ title, value, icon }) => (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex items-center">
-        <div className="mr-4">{icon}</div>
-        <div>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-            <p className="text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
+const DashboardSkeleton = () => (
+    <div className="p-8 bg-gray-50 dark:bg-gray-900 min-h-screen">
+        <SkeletonLoader className="h-9 w-1/4 mb-6" />
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <SkeletonLoader className="h-24 rounded-lg" />
+            <SkeletonLoader className="h-24 rounded-lg" />
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <SkeletonLoader className="h-8 w-1/3 mb-4" />
+            <SkeletonLoader className="h-64 w-full" />
         </div>
     </div>
 );
@@ -19,7 +28,6 @@ const StatCard = ({ title, value, icon }) => (
 const Dashboard = () => {
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
 
     useEffect(() => {
         const fetchSummary = async () => {
@@ -27,7 +35,7 @@ const Dashboard = () => {
                 const response = await api.get('/api/dashboard/summary');
                 setSummary(response.data);
             } catch (err) {
-                setError('Failed to fetch dashboard data.');
+                toast.error('Failed to fetch dashboard data.');
                 console.error(err);
             } finally {
                 setLoading(false);
@@ -37,12 +45,8 @@ const Dashboard = () => {
         fetchSummary();
     }, []);
 
-    if (loading) {
-        return <div className="text-center p-8">Loading...</div>;
-    }
-
-    if (error) {
-        return <div className="text-center p-8 text-red-500">{error}</div>;
+    if (loading || !summary) {
+        return <DashboardSkeleton />;
     }
 
     const chartData = {
