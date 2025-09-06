@@ -37,12 +37,14 @@ def create_app(config_name=None):
     from .routes.settings import settings_bp
     from .routes.items import items_bp
     from .routes.ingestion import ingestion_bp
+    from .routes.dashboard import dashboard_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(items_bp)
     app.register_blueprint(ingestion_bp)
+    app.register_blueprint(dashboard_bp)
 
     # --- CLI Commands ---
     @app.cli.command("init-db")

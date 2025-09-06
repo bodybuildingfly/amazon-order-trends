@@ -16,6 +16,10 @@ module.exports = {
         danger: 'var(--color-danger)',
         'danger-hover': 'var(--color-danger-hover)',
         'danger-text': 'var(--color-danger-text)',
+        warning: {
+          surface: 'var(--color-warning-surface)',
+          'text-on-surface': 'var(--color-warning-text-on-surface)',
+        },
         background: 'var(--color-background)',
         surface: 'var(--color-surface)',
         'surface-hover': 'var(--color-surface-hover)',

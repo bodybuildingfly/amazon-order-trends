@@ -4,8 +4,9 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // --- Component & Context Imports ---
+import Dashboard from './components/Dashboard';
 import InteractiveDataTable from './components/InteractiveDataTable';
-import RepeatOrdersTable from './components/RepeatOrdersTable'; // Import the new component
+import RepeatOrdersTable from './components/RepeatOrdersTable';
 import LoginPage from './components/LoginPage';
 import UserSettingsPage from './components/UserSettingsPage';
 import AdminSettingsPage from './components/AdminSettingsPage';
@@ -45,6 +46,7 @@ function App() {
                         <ProtectedRoute>
                             <MainLayout>
                                 <Routes>
+                                    <Route path="/dashboard" element={<Dashboard />} />
                                     <Route path="/table" element={<InteractiveDataTable />} />
                                     <Route path="/repeat-orders" element={<RepeatOrdersTable />} />
                                     <Route path="/settings" element={<UserSettingsPage />} />
@@ -55,7 +57,7 @@ function App() {
                                         </>
                                     )}
                                     {/* Default route inside the main layout */}
-                                    <Route path="/" element={<Navigate to="/table" replace />} />
+                                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
                                 </Routes>
                             </MainLayout>
                         </ProtectedRoute>
