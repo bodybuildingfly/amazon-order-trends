@@ -5,12 +5,52 @@ import os
 import logging
 from flask import Flask, send_from_directory, jsonify
 from werkzeug.security import generate_password_hash
+from psycopg2 import errors as psycopg2_errors
 
 from api.config import config_by_name
 from api.extensions import cors, jwt, scheduler
 from api.helpers.encryption import initialize_fernet
 from shared.db import get_db_cursor, close_pool
 from api.services.ingestion_service import run_scheduled_ingestion_job_stream
+
+def _ensure_db_initialized(app):
+    """
+    Checks if the database is initialized, and if not, creates the schema
+    and the initial admin user.
+    """
+    with app.app_context():
+        try:
+            # Check if the 'users' table exists. If not, this will raise an exception.
+            with get_db_cursor() as cur:
+                cur.execute("SELECT 1 FROM users LIMIT 1;")
+            app.logger.info("Database already initialized.")
+            return
+        except psycopg2_errors.UndefinedTable:
+            app.logger.info("Database not initialized. Initializing now...")
+        except Exception as e:
+            app.logger.error(f"Could not connect to database for initialization check: {e}")
+            # If we can't connect, we can't initialize. The app will likely fail later, which is appropriate.
+            return
+
+        try:
+            with get_db_cursor(commit=True) as cur:
+                app.logger.info("Creating database schema...")
+                schema_path = os.path.join(os.path.dirname(__file__), '../ingestion/schema.sql')
+                with open(schema_path, 'r') as f:
+                    cur.execute(f.read())
+                
+                admin_user = os.environ.get("ADMIN_USERNAME", "admin")
+                admin_pass = os.environ.get("ADMIN_PASSWORD", "changeme")
+
+                app.logger.info(f"Creating initial admin user: '{admin_user}'")
+                hashed_password = generate_password_hash(admin_pass)
+                cur.execute(
+                    "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, 'admin')",
+                    (admin_user, hashed_password)
+                )
+                app.logger.info("Database initialization complete.")
+        except Exception as e:
+            app.logger.error(f"An error occurred during DB initialization: {e}", exc_info=True)
 
 def create_app(config_name=None):
     """Application factory."""
@@ -27,6 +67,10 @@ def create_app(config_name=None):
     
     # Initialize scheduler, but don't start it until the app is run
     scheduler.init_app(app)
+
+    # --- Database Initialization ---
+    # This needs to be done before registering blueprints or starting scheduler
+    _ensure_db_initialized(app)
 
     # --- Logging ---
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -45,40 +89,6 @@ def create_app(config_name=None):
     app.register_blueprint(items_bp)
     app.register_blueprint(ingestion_bp)
     app.register_blueprint(dashboard_bp)
-
-    # --- CLI Commands ---
-    @app.cli.command("init-db")
-    def init_db_command():
-        """Creates tables and initial admin user if they don't exist."""
-        try:
-            with get_db_cursor(commit=True) as cur:
-                app.logger.info("Ensuring database schema exists...")
-                schema_path = os.path.join(os.path.dirname(__file__), '../ingestion/schema.sql')
-                with open(schema_path, 'r') as f:
-                    cur.execute(f.read())
-                
-                admin_user = os.environ.get("ADMIN_USERNAME", "admin")
-                admin_pass = os.environ.get("ADMIN_PASSWORD", "changeme")
-
-                cur.execute("SELECT id FROM users WHERE username = %s", (admin_user,))
-                if cur.fetchone() is None:
-                    app.logger.info(f"Creating initial admin user: '{admin_user}'")
-                    hashed_password = generate_password_hash(admin_pass)
-                    cur.execute(
-                        "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, 'admin')",
-                        (admin_user, hashed_password)
-                    )
-                else:
-                    app.logger.info("Admin user already exists.")
-                
-                cur.execute("SELECT COUNT(*) FROM orders")
-                order_count = cur.fetchone()[0]
-                if order_count == 0:
-                    app.logger.info("Database is empty. Please log in, save your settings, and run the initial data import.")
-
-            app.logger.info("Database initialization check complete.")
-        except Exception as e:
-            app.logger.error(f"An error occurred during DB initialization: {e}")
 
     # --- Scheduled Jobs ---
     # We need to define the job within the factory to have access to the app context
