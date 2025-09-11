@@ -33,6 +33,9 @@ COPY --from=build-stage /app/frontend/build ./frontend/build
 
 EXPOSE 5001
 
-# Use a production-grade Gunicorn command with the gevent worker
-# This is optimized for concurrent network requests.
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "4", "--worker-class", "gevent", "--timeout", "120", "api.app:app"]
+# Copy the entrypoint script and make it executable
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+# Set the entrypoint to run the script, which will in turn start Gunicorn
+ENTRYPOINT ["./entrypoint.sh"]
