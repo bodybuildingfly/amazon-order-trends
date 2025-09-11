@@ -41,11 +41,15 @@ def _ensure_db_initialized(app):
                 
                 admin_user = os.environ.get("ADMIN_USERNAME", "admin")
                 admin_pass = os.environ.get("ADMIN_PASSWORD", "changeme")
-
-                app.logger.info(f"Creating initial admin user: '{admin_user}'")
                 hashed_password = generate_password_hash(admin_pass)
+
+                app.logger.info(f"Ensuring initial admin user '{admin_user}' exists...")
                 cur.execute(
-                    "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, 'admin')",
+                    """
+                    INSERT INTO users (username, hashed_password, role)
+                    VALUES (%s, %s, 'admin')
+                    ON CONFLICT (username) DO NOTHING;
+                    """,
                     (admin_user, hashed_password)
                 )
                 app.logger.info("Database initialization complete.")
