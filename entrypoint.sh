@@ -6,6 +6,7 @@ set -e
 # Run database initializations.
 # This runs the 'init-db' command defined in 'api/__init__.py'.
 echo "Running database initializations..."
+export FLASK_APP=api.app
 flask init-db
 
 # Start the Gunicorn server.
