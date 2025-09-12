@@ -13,7 +13,7 @@ services:
       - /app/frontend/node_modules
     environment:
       # --- Add FLASK_APP to tell Flask where the app is ---
-      - FLASK_APP=backend.api.app
+      - FLASK_APP=backend.api:create_app
       - PYTHONPATH=/app
       - FLASK_ENV=development
       - POSTGRES_HOST=${POSTGRES_HOST}
