@@ -46,7 +46,7 @@ def get_db_cursor(commit=False):
     handles connection borrowing, returning, and transaction logic automatically.
     """
     if not connection_pool:
-        init_pool()
+        raise Exception("Database connection pool is not initialized. Call init_pool() first.")
 
     conn = None
     try:

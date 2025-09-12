@@ -38,9 +38,14 @@ const UserSettingsPage = () => {
     const pollImportStatus = useCallback(async () => {
         try {
             const { data: job } = await apiClient.get('/api/ingestion/manual/status');
-            setJobDetails(job);
-            if (job && (job.status === 'completed' || job.status === 'failed')) {
-                setIsPolling(false); // Stop polling
+            // Only update job details if a job object is returned.
+            // This prevents the UI from disappearing if the API returns null
+            // (e.g., after a server restart where the in-memory job is lost).
+            if (job) {
+                setJobDetails(job);
+                if (job.status === 'completed' || job.status === 'failed') {
+                    setIsPolling(false); // Stop polling
+                }
             }
         } catch (error) {
             toast.error('Could not get import status. Stopping polling.');

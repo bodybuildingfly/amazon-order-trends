@@ -3,12 +3,13 @@ monkey.patch_all()
 
 import os
 import logging
+import atexit
 from flask import Flask, send_from_directory, jsonify
 from werkzeug.security import generate_password_hash
 from api.config import config_by_name
 from api.extensions import cors, jwt, scheduler
 from api.helpers.encryption import initialize_fernet
-from shared.db import get_db_cursor, close_pool
+from shared.db import init_pool, get_db_cursor, close_pool
 from api.services.ingestion_service import run_scheduled_ingestion_job_stream
 
 def create_app(config_name=None):
@@ -18,6 +19,10 @@ def create_app(config_name=None):
         
     app = Flask(__name__, static_folder='../frontend/build', static_url_path='/')
     app.config.from_object(config_by_name[config_name])
+
+    # --- Initialize Database Pool ---
+    init_pool()
+    atexit.register(close_pool)
 
     # --- Initialize Extensions ---
     cors.init_app(app)
