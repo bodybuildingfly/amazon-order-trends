@@ -11,6 +11,49 @@ from api.helpers.encryption import initialize_fernet
 from shared.db import get_db_cursor, close_pool
 from api.services.ingestion_service import run_scheduled_ingestion_job_stream
 
+def _ensure_db_initialized(app):
+    """
+    Checks if the database is initialized, and if not, creates the schema
+    and the initial admin user.
+    """
+    with app.app_context():
+        try:
+            # Check if the 'users' table exists. If not, this will raise an exception.
+            with get_db_cursor() as cur:
+                cur.execute("SELECT 1 FROM users LIMIT 1;")
+            app.logger.info("Database already initialized.")
+            return
+        except psycopg2_errors.UndefinedTable:
+            app.logger.info("Database not initialized. Initializing now...")
+        except Exception as e:
+            app.logger.error(f"Could not connect to database for initialization check: {e}")
+            # If we can't connect, we can't initialize. The app will likely fail later, which is appropriate.
+            return
+
+        try:
+            with get_db_cursor(commit=True) as cur:
+                app.logger.info("Creating database schema...")
+                schema_path = os.path.join(os.path.dirname(__file__), '../ingestion/schema.sql')
+                with open(schema_path, 'r') as f:
+                    cur.execute(f.read())
+                
+                admin_user = os.environ.get("ADMIN_USERNAME", "admin")
+                admin_pass = os.environ.get("ADMIN_PASSWORD", "changeme")
+                hashed_password = generate_password_hash(admin_pass)
+
+                app.logger.info(f"Ensuring initial admin user '{admin_user}' exists...")
+                cur.execute(
+                    """
+                    INSERT INTO users (username, hashed_password, role)
+                    VALUES (%s, %s, 'admin')
+                    ON CONFLICT (username) DO NOTHING;
+                    """,
+                    (admin_user, hashed_password)
+                )
+                app.logger.info("Database initialization complete.")
+        except Exception as e:
+            app.logger.error(f"An error occurred during DB initialization: {e}", exc_info=True)
+
 def create_app(config_name=None):
     """Application factory."""
     if config_name is None:
