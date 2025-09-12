@@ -51,7 +51,7 @@
     --color-surface-hover: #334155; /* slate-700 */
     --color-text-primary: #F1F5F9; /* slate-100 */
     --color-text-secondary: #94A3B8; /* slate-400 */
-    --color-text-muted: #64748B; /* slate-500 */
+    --color-text-muted: #94A3B8; /* slate-400, was slate-500 */
     --color-text-accent: #60A5FA; /* blue-400 */
     --color-border-color: #334155; /* slate-700 */
   }

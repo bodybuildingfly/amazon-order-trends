@@ -19,10 +19,20 @@ if [ $status -ne 0 ]; then
 fi
 echo "Database migration successful."
 
-# Step 2: Start the Flask backend API in the background
+# Step 2: Seed the initial admin user.
+echo "Seeding initial admin user..."
+flask seed-admin
+status=$?
+if [ $status -ne 0 ]; then
+  echo "Admin user seeding failed with status $status. See errors above. Exiting."
+  exit $status
+fi
+echo "Admin user seeding successful."
+
+# Step 3: Start the Flask backend API in the background
 echo "Starting Flask backend server on port 5001..."
 flask run --host=0.0.0.0 --port=5001 &
 
-# Step 3: Start the React frontend development server in the foreground
+# Step 4: Start the React frontend development server in the foreground
 echo "Starting React frontend server on port 3000..."
 npm start --prefix frontend

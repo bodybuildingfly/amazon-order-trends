@@ -12,6 +12,7 @@ services:
       - ./ingestion:/app/ingestion
       - ./shared:/app/shared
       - ./frontend:/app/frontend
+      - ./migrations:/app/migrations
       - /app/frontend/node_modules
     environment:
       # --- Add FLASK_APP to tell Flask where the app is ---

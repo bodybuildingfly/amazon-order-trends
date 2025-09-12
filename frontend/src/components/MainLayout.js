@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 
 // --- Component & Context Imports ---
 import ThemeToggle from './ThemeToggle';
@@ -33,6 +33,12 @@ const NavLink = ({ to, icon, children }) => {
  */
 const MainLayout = ({ children }) => {
     const { user, logout } = useAuth();
+    const navigate = useNavigate();
+
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
+    };
 
     return (
         <div className="min-h-screen bg-background text-text-primary">
@@ -60,7 +66,7 @@ const MainLayout = ({ children }) => {
                             <div />
                             <div className="text-center">
                                 <p className="text-sm text-text-secondary">Signed in as <span className="font-bold">{user?.username}</span></p>
-                                <button onClick={logout} className="text-sm text-text-accent hover:underline">Logout</button>
+                                <button onClick={handleLogout} className="text-sm text-text-accent hover:underline">Logout</button>
                             </div>
                             <div className="flex justify-end">
                                 <ThemeToggle />

@@ -54,7 +54,7 @@ def create_app(config_name=None):
     @app.cli.command("db-migrate")
     def db_migrate_command():
         """Applies database migrations."""
-        migrations_dir = os.path.join(os.path.dirname(__file__), '../migrations/versions')
+        migrations_dir = '/app/migrations/versions' # Use absolute path in container
         app.logger.info("Starting database migration process...")
 
         try:
