@@ -24,6 +24,9 @@ COPY backend/ingestion/requirements.txt ./ingestion-requirements.txt
 RUN pip install --no-cache-dir -r api-requirements.txt && \
     pip install --no-cache-dir -r ingestion-requirements.txt
 
+# Set the Python path to include the /app directory
+ENV PYTHONPATH /app
+
 # Copy the entire backend application code
 COPY backend/ .
 
