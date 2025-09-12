@@ -26,8 +26,6 @@ def run_ingestion_route():
         if manual_import_jobs.get(current_user_id, {}).get('status') == 'running':
             return jsonify({"error": "An import is already in progress for this user."}), 409
 
-        manual_import_jobs.pop(current_user_id, None)
-
     app = current_app._get_current_object()
     thread = threading.Thread(target=run_manual_ingestion_job, args=(app, current_user_id, days))
     thread.daemon = True

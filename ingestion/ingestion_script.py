@@ -6,13 +6,14 @@ import re
 import base64
 import hashlib
 import time
+import importlib
 from datetime import date, datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from cryptography.fernet import Fernet
-from amazonorders.session import AmazonSession
-from amazonorders.orders import AmazonOrders
-from amazonorders.transactions import AmazonTransactions
+import amazonorders.session
+import amazonorders.orders
+import amazonorders.transactions
 from amazonorders.exception import AmazonOrdersError
 from dotenv import load_dotenv
 
@@ -83,6 +84,16 @@ def main(user_id, manual_days_override=None):
     :param user_id: The UUID of the user for whom to run ingestion.
     :param manual_days_override: An integer specifying the number of days to fetch.
     """
+    # Reload the library modules to ensure a clean state for each run.
+    # This prevents issues where the library retains state from a previous
+    # run in the same long-lived process.
+    importlib.reload(amazonorders.session)
+    importlib.reload(amazonorders.orders)
+    importlib.reload(amazonorders.transactions)
+    AmazonSession = amazonorders.session.AmazonSession
+    AmazonOrders = amazonorders.orders.AmazonOrders
+    AmazonTransactions = amazonorders.transactions.AmazonTransactions
+
     error_occurred = False
     settings = {}
     session = None
