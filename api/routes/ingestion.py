@@ -9,8 +9,6 @@ from api.helpers.decorators import admin_required
 from api.services.ingestion_service import (
     run_manual_ingestion_job,
     run_scheduled_ingestion_job_stream,
-    manual_import_jobs,
-    manual_import_jobs_lock,
 )
 
 ingestion_bp = Blueprint('ingestion_bp', __name__)
@@ -22,29 +20,78 @@ def run_ingestion_route():
     data = request.get_json()
     days = data.get('days', 60)
 
-    with manual_import_jobs_lock:
-        if manual_import_jobs.get(current_user_id, {}).get('status') == 'running':
+    # Check if a job is already running for this user
+    with get_db_cursor() as cur:
+        cur.execute(
+            "SELECT id FROM ingestion_jobs WHERE user_id = %s AND status = 'running' AND job_type = 'manual'",
+            (current_user_id,)
+        )
+        if cur.fetchone():
             return jsonify({"error": "An import is already in progress for this user."}), 409
 
+    # Create a new job record in the database
+    with get_db_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO ingestion_jobs (user_id, job_type, status, details)
+            VALUES (%s, 'manual', 'pending', %s) RETURNING id
+            """,
+            (current_user_id, json.dumps({'log': ['Job created...']}))
+        )
+        job_id = cur.fetchone()[0]
+
     app = current_app._get_current_object()
-    thread = threading.Thread(target=run_manual_ingestion_job, args=(app, current_user_id, days))
+    thread = threading.Thread(target=run_manual_ingestion_job, args=(app, current_user_id, job_id, days))
     thread.daemon = True
     thread.start()
 
-    return jsonify({"message": "Manual import process started."}), 202
+    return jsonify({"message": "Manual import process started.", "job_id": job_id}), 202
 
 
 @ingestion_bp.route("/api/ingestion/manual/status", methods=['GET'])
 @jwt_required()
 def get_manual_ingestion_status():
     current_user_id = get_jwt_identity()
-    with manual_import_jobs_lock:
-        job_status = manual_import_jobs.get(current_user_id)
+    job_id = request.args.get('job_id')
 
-    if not job_status:
+    # If job_id is provided, fetch that specific job.
+    if job_id:
+        with get_db_cursor() as cur:
+            cur.execute(
+                "SELECT id, status, progress, details FROM ingestion_jobs WHERE id = %s AND user_id = %s",
+                (job_id, current_user_id)
+            )
+            job_record = cur.fetchone()
+    # If no job_id, fetch the latest running or most recently completed manual job for the user.
+    else:
+        with get_db_cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, status, progress, details FROM ingestion_jobs
+                WHERE user_id = %s AND job_type = 'manual'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (current_user_id,)
+            )
+            job_record = cur.fetchone()
+
+    if not job_record:
         return jsonify(None)
 
-    return jsonify(job_status)
+    job_id, status, progress, details = job_record
+
+    # The frontend expects a flat object with 'log' and 'error' keys.
+    # We construct this object from the 'details' JSON field.
+    response_data = {
+        "id": job_id,
+        "status": status,
+        "progress": progress or {"value": 0, "max": 100},
+        "log": details.get('log', []),
+        "error": details.get('error')
+    }
+
+    return jsonify(response_data)
 
 
 @ingestion_bp.route("/api/amazon-logout", methods=['POST'])

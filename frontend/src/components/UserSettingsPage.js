@@ -22,6 +22,7 @@ const UserSettingsPage = () => {
     
     // State for the import job
     const [jobDetails, setJobDetails] = useState(null);
+    const [currentJobId, setCurrentJobId] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
     const [isPolling, setIsPolling] = useState(false);
     
@@ -36,22 +37,28 @@ const UserSettingsPage = () => {
     });
 
     const pollImportStatus = useCallback(async () => {
+        // If there's no job ID to poll, don't do anything.
+        // This can happen if the component is polling but a job hasn't been started yet.
+        if (!currentJobId) {
+            return;
+        }
         try {
-            const { data: job } = await apiClient.get('/api/ingestion/manual/status');
-            // Only update job details if a job object is returned.
-            // This prevents the UI from disappearing if the API returns null
-            // (e.g., after a server restart where the in-memory job is lost).
+            const { data: job } = await apiClient.get('/api/ingestion/manual/status', {
+                params: { job_id: currentJobId }
+            });
+
             if (job) {
                 setJobDetails(job);
                 if (job.status === 'completed' || job.status === 'failed') {
-                    setIsPolling(false); // Stop polling
+                    setIsPolling(false);
+                    setCurrentJobId(null); // Reset job ID when done
                 }
             }
         } catch (error) {
             toast.error('Could not get import status. Stopping polling.');
             setIsPolling(false); // Stop polling on error
         }
-    }, []);
+    }, [currentJobId]);
 
     // Effect to manage the polling interval based on the isPolling state
     useEffect(() => {
@@ -103,10 +110,15 @@ const UserSettingsPage = () => {
                 }));
                 setIsConfigured(settingsRes.data.is_configured);
 
+                // Fetch the last known job status for this user
                 const { data: initialJob } = await apiClient.get('/api/ingestion/manual/status');
-                setJobDetails(initialJob);
-                if (initialJob?.status === 'running') {
-                    setIsPolling(true);
+                if (initialJob) {
+                    setJobDetails(initialJob);
+                    // If the job is still running, start polling it.
+                    if (initialJob.status === 'running') {
+                        setCurrentJobId(initialJob.id);
+                        setIsPolling(true);
+                    }
                 }
             } catch (err) {
                 toast.error('Failed to load initial page data.');
@@ -154,16 +166,23 @@ const UserSettingsPage = () => {
     };
 
     const handleRunIngestion = async () => {
-        // Optimistically update UI and start polling
+        // Optimistically update UI
         setJobDetails({
             status: 'running',
             log: ['Requesting server to start import...'],
             progress: { value: 0, max: 100 }
         });
-        setIsPolling(true);
 
         try {
-            await apiClient.post('/api/ingestion/run', { days: importDays });
+            const response = await apiClient.post('/api/ingestion/run', { days: importDays });
+            const newJobId = response.data.job_id;
+            
+            if (newJobId) {
+                setCurrentJobId(newJobId);
+                setIsPolling(true); // Start polling now that we have a job ID
+            } else {
+                throw new Error("Did not receive a job ID from the server.");
+            }
         } catch (err) {
             const errorMsg = err.response?.data?.error || 'Failed to start import.';
             toast.error(errorMsg);

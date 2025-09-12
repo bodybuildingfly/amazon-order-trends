@@ -26,13 +26,14 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WATCHPACK_POLLING=true
-    command: >
-      sh -c "
-        echo 'Waiting for database...' && sleep 5 &&
-        echo 'Initializing database...' && flask init-db &&
-        echo 'Starting development servers...' &&
-        flask run --host=0.0.0.0 --port=5001 &
-        npm start --prefix frontend
-      "
+    # command: >
+    #   sh -c "
+    #     echo 'Waiting for database...' && sleep 5 &&
+    #     echo 'Initializing database...' && flask init-db &&
+    #     echo 'Starting development servers...' &&
+    #     flask run --host=0.0.0.0 --port=5001 &
+    #     npm start --prefix frontend
+    #   "
+    command: sh /app/start-dev.sh
     restart: unless-stopped
 

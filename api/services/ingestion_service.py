@@ -7,55 +7,75 @@ from shared.db import get_db_cursor
 from ingestion.ingestion_script import main as run_ingestion_generator
 from api.services.notification_service import send_discord_notification
 
-# In-memory store for manual ingestion jobs
-manual_import_jobs = {}
-manual_import_jobs_lock = threading.Lock()
-
-def run_manual_ingestion_job(app: Flask, user_id: str, days: int):
+def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int):
     """
     Runs the ingestion process in a background thread for a single user
-    and updates the in-memory job store.
+    and updates the job status in the database.
     """
     with app.app_context():
-        job_status = {
-            "status": "running",
-            "progress": {"value": 0, "max": 100},
-            "log": ["Job started..."],
-            "start_time": datetime.utcnow().isoformat(),
-            "end_time": None,
-            "error": None
-        }
-        with manual_import_jobs_lock:
-            manual_import_jobs[user_id] = job_status
-
+        # Initialize job details in the database
+        log = ["Job started..."]
+        progress = {"value": 0, "max": 100}
+        details = {"log": log, "error": None}
+        
         try:
-            app.logger.info(f"Starting manual ingestion for user {user_id} for {days} days.")
-            for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days):
-                with manual_import_jobs_lock:
-                    if event_type == 'status':
-                        job_status['log'].append(data)
-                    elif event_type == 'progress':
-                        job_status['progress'] = data
-                    elif event_type == 'error':
-                        job_status['status'] = 'failed'
-                        job_status['error'] = data
-                        job_status['log'].append(f"ERROR: {data}")
-                    elif event_type == 'done':
-                        job_status['log'].append(data)
+            with get_db_cursor(commit=True) as cur:
+                cur.execute(
+                    "UPDATE ingestion_jobs SET status = 'running', progress = %s, details = %s WHERE id = %s",
+                    (json.dumps(progress), json.dumps(details), job_id)
+                )
+
+            app.logger.info(f"Starting manual ingestion for user {user_id} (Job ID: {job_id}) for {days} days.")
             
-            with manual_import_jobs_lock:
-                if job_status['status'] == 'running':
-                    job_status['status'] = 'completed'
+            # The core ingestion logic
+            for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days):
+                if event_type == 'status':
+                    log.append(data)
+                    details['log'] = log
+                    with get_db_cursor(commit=True) as cur:
+                        cur.execute("UPDATE ingestion_jobs SET details = %s WHERE id = %s", (json.dumps(details), job_id))
+                
+                elif event_type == 'progress':
+                    progress = data
+                    with get_db_cursor(commit=True) as cur:
+                        cur.execute("UPDATE ingestion_jobs SET progress = %s WHERE id = %s", (json.dumps(progress), job_id))
+
+                elif event_type == 'error':
+                    log.append(f"ERROR: {data}")
+                    details['log'] = log
+                    details['error'] = data
+                    with get_db_cursor(commit=True) as cur:
+                        cur.execute(
+                            "UPDATE ingestion_jobs SET status = 'failed', details = %s WHERE id = %s",
+                            (json.dumps(details), job_id)
+                        )
+
+                elif event_type == 'done':
+                    log.append(data)
+                    details['log'] = log
+                    with get_db_cursor(commit=True) as cur:
+                        cur.execute("UPDATE ingestion_jobs SET details = %s WHERE id = %s", (json.dumps(details), job_id))
+
+            # Finalize job status
+            with get_db_cursor(commit=True) as cur:
+                # Check current status to avoid overwriting a 'failed' status
+                cur.execute("SELECT status FROM ingestion_jobs WHERE id = %s", (job_id,))
+                current_status = cur.fetchone()[0]
+                if current_status == 'running':
+                    cur.execute("UPDATE ingestion_jobs SET status = 'completed' WHERE id = %s", (job_id,))
 
         except Exception as e:
-            app.logger.error(f"Manual ingestion job failed for user {user_id}: {e}", exc_info=True)
-            with manual_import_jobs_lock:
-                job_status['status'] = 'failed'
-                job_status['error'] = str(e)
+            app.logger.error(f"Manual ingestion job {job_id} failed for user {user_id}: {e}", exc_info=True)
+            details['error'] = str(e)
+            with get_db_cursor(commit=True) as cur:
+                cur.execute(
+                    "UPDATE ingestion_jobs SET status = 'failed', details = %s WHERE id = %s",
+                    (json.dumps(details), job_id)
+                )
         finally:
-            with manual_import_jobs_lock:
-                job_status['end_time'] = datetime.utcnow().isoformat()
-            app.logger.info(f"Manual ingestion job finished for user {user_id} with status: {job_status['status']}")
+            with get_db_cursor(commit=True) as cur:
+                cur.execute("UPDATE ingestion_jobs SET updated_at = %s WHERE id = %s", (datetime.utcnow(), job_id))
+            app.logger.info(f"Manual ingestion job {job_id} finished for user {user_id}.")
 
 
 def run_scheduled_ingestion_job_stream(job_id, triggered_by_user_id=None):

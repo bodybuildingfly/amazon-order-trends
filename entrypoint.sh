@@ -3,11 +3,11 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-# Run database initializations.
-# This runs the 'init-db' command defined in 'api/__init__.py'.
-echo "Running database initializations..."
+# Apply database migrations.
+# This runs the 'db-migrate' command defined in 'api/__init__.py'.
+echo "Applying database migrations..."
 export FLASK_APP=api.app
-flask init-db
+flask db-migrate
 
 # Start the Gunicorn server.
 # 'exec' replaces the shell process with the Gunicorn process.

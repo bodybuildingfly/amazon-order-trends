@@ -51,16 +51,67 @@ def create_app(config_name=None):
     app.register_blueprint(dashboard_bp)
 
     # --- CLI Commands ---
-    @app.cli.command("init-db")
-    def init_db_command():
-        """Creates tables and initial admin user if they don't exist."""
+    @app.cli.command("db-migrate")
+    def db_migrate_command():
+        """Applies database migrations."""
+        migrations_dir = os.path.join(os.path.dirname(__file__), '../migrations/versions')
+        app.logger.info("Starting database migration process...")
+
         try:
             with get_db_cursor(commit=True) as cur:
-                app.logger.info("Ensuring database schema exists...")
-                schema_path = os.path.join(os.path.dirname(__file__), '../ingestion/schema.sql')
-                with open(schema_path, 'r') as f:
-                    cur.execute(f.read())
-                
+                # 1. Create migrations tracking table if it doesn't exist
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_migrations (
+                        version VARCHAR(255) PRIMARY KEY
+                    );
+                """)
+                app.logger.info("Checked/created 'schema_migrations' table.")
+
+                # 2. Get applied migrations from the DB
+                cur.execute("SELECT version FROM schema_migrations")
+                applied_versions = {row[0] for row in cur.fetchall()}
+                app.logger.info(f"Found {len(applied_versions)} applied migrations.")
+
+                # 3. Get available migrations from the filesystem
+                available_migrations = sorted(
+                    f for f in os.listdir(migrations_dir) if f.endswith('.sql')
+                )
+                app.logger.info(f"Found {len(available_migrations)} available migration files.")
+
+                # 4. Determine and apply un-applied migrations
+                migrations_to_apply = [
+                    m for m in available_migrations if m not in applied_versions
+                ]
+
+                if not migrations_to_apply:
+                    app.logger.info("Database is up to date.")
+                    return
+
+                for migration_file in migrations_to_apply:
+                    app.logger.info(f"Applying migration: {migration_file}...")
+                    try:
+                        with open(os.path.join(migrations_dir, migration_file), 'r') as f:
+                            sql_script = f.read()
+                            cur.execute(sql_script)
+                        
+                        cur.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (migration_file,))
+                        app.logger.info(f"Successfully applied and recorded migration: {migration_file}")
+                    except Exception as e:
+                        app.logger.error(f"Failed to apply migration {migration_file}: {e}")
+                        # The transaction will be rolled back by the 'with' context manager
+                        raise
+
+            app.logger.info("Database migration process finished successfully.")
+        except Exception as e:
+            app.logger.error(f"A critical error occurred during the migration process: {e}")
+            # Exit or handle failure appropriately
+            raise
+
+    @app.cli.command("seed-admin")
+    def seed_admin_command():
+        """Creates the initial admin user if it doesn't exist."""
+        try:
+            with get_db_cursor(commit=True) as cur:
                 admin_user = os.environ.get("ADMIN_USERNAME", "admin")
                 admin_pass = os.environ.get("ADMIN_PASSWORD", "changeme")
 
@@ -72,17 +123,12 @@ def create_app(config_name=None):
                         "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, 'admin')",
                         (admin_user, hashed_password)
                     )
+                    app.logger.info("Admin user created successfully.")
                 else:
                     app.logger.info("Admin user already exists.")
-                
-                cur.execute("SELECT COUNT(*) FROM orders")
-                order_count = cur.fetchone()[0]
-                if order_count == 0:
-                    app.logger.info("Database is empty. Please log in, save your settings, and run the initial data import.")
-
-            app.logger.info("Database initialization check complete.")
         except Exception as e:
-            app.logger.error(f"An error occurred during DB initialization: {e}")
+            app.logger.error(f"An error occurred during admin user seeding: {e}")
+            raise
 
     # --- Scheduled Jobs ---
     # We need to define the job within the factory to have access to the app context

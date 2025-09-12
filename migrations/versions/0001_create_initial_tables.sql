@@ -1,0 +1,112 @@
+-- migrations/versions/0001_create_initial_tables.sql
+
+-- This is the initial schema setup for the application.
+-- It creates all the necessary tables for users, settings, orders, items, and jobs.
+
+-- Create a UUID extension if it doesn't exist.
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Table to store user login information
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    hashed_password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table to store user-specific settings
+CREATE TABLE IF NOT EXISTS user_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID UNIQUE NOT NULL,
+    amazon_email VARCHAR(255),
+    amazon_password_encrypted BYTEA, -- Correct data type for encrypted data
+    amazon_otp_secret_key VARCHAR(255),
+    enable_scheduled_ingestion BOOLEAN DEFAULT FALSE NOT NULL,
+    discord_webhook_url TEXT,
+    discord_notification_preference VARCHAR(20) DEFAULT 'off' NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_user
+        FOREIGN KEY(user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
+);
+
+-- Table to store high-level order information
+CREATE TABLE IF NOT EXISTS orders (
+    order_id VARCHAR(50) PRIMARY KEY,
+    user_id UUID NOT NULL,
+    order_placed_date DATE NOT NULL,
+    grand_total NUMERIC(10, 2) NOT NULL,
+    subscription_discount NUMERIC(10, 2),
+    recipient_name VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_orders_user
+        FOREIGN KEY(user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
+);
+
+-- Table to store individual items within each order
+CREATE TABLE IF NOT EXISTS items (
+    item_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id VARCHAR(50) NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    asin VARCHAR(20),
+    full_title TEXT NOT NULL,
+    link TEXT,
+    thumbnail_url TEXT,
+    quantity INTEGER NOT NULL,
+    price_per_unit NUMERIC(10, 2) NOT NULL,
+    is_subscribe_and_save BOOLEAN DEFAULT FALSE,
+    -- Add a unique constraint to prevent duplicate items per order
+    UNIQUE(order_id, full_title, price_per_unit)
+);
+
+CREATE INDEX IF NOT EXISTS idx_items_asin ON items(asin);
+
+-- Table to store information and status about ingestion jobs
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    job_type VARCHAR(50) NOT NULL, -- e.g., 'scheduled', 'manual'
+    status VARCHAR(20) NOT NULL, -- e.g., 'running', 'completed', 'failed'
+    progress JSONB, -- e.g., {"current": 5, "total": 10}
+    details JSONB, -- e.g., {"log": [...], "users": {"user_id": "status"}}
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trigger to automatically update the updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_ingestion_jobs_updated_at ON ingestion_jobs;
+CREATE TRIGGER update_ingestion_jobs_updated_at
+BEFORE UPDATE ON ingestion_jobs
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Additionally, let's create the initial admin user as part of this migration
+-- This logic was previously in the init-db command.
+-- We use a DO block to insert the admin user only if they don't exist.
+DO $$
+DECLARE
+    admin_user_var TEXT := 'admin'; -- Your default admin username
+    admin_pass_var TEXT := 'changeme'; -- Your default admin password
+    hashed_password_var TEXT;
+BEGIN
+    -- Check if the admin user already exists
+    IF NOT EXISTS (SELECT 1 FROM users WHERE username = admin_user_var) THEN
+        -- In PostgreSQL, we can't use generate_password_hash directly in PL/pgSQL
+        -- without custom extensions. This part of user creation should be handled
+        -- by the application logic after migration. For simplicity in a pure SQL
+        -- migration, we'll leave this out. The application's startup logic
+        -- can create the admin user if it doesn't exist after migrations run.
+        -- The init-db command had this logic, and it should be adapted into
+        -- a new command or startup check if needed.
+    END IF;
+END $$;
