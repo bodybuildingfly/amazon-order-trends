@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from shared.db import get_db_cursor
-from api.helpers.encryption import get_fernet
-from api.helpers.decorators import admin_required
+from backend.shared.db import get_db_cursor
+from backend.api.helpers.encryption import get_fernet
+from backend.api.helpers.decorators import admin_required
 
 settings_bp = Blueprint('settings_bp', __name__)
 

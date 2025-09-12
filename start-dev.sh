@@ -10,7 +10,7 @@ echo "Starting development environment..."
 echo "Waiting for PostgreSQL to be ready..."
 sleep 5 # A small safety delay for network DBs to respond on first startup
 echo "Applying database migrations via Flask..."
-export FLASK_APP=api/app
+export FLASK_APP=backend.api.app
 flask db-migrate
 status=$?
 if [ $status -ne 0 ]; then

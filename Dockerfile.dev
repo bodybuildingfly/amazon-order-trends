@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy all dependency definition files.
-COPY api/requirements.txt ./api/
-COPY ingestion/requirements.txt ./ingestion/
+COPY backend/api/requirements.txt ./api/
+COPY backend/ingestion/requirements.txt ./ingestion/
 COPY frontend/package*.json ./frontend/
 
 # Install all Python and Node.js dependencies.

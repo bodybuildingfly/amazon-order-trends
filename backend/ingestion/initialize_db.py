@@ -3,10 +3,10 @@ import os
 import sys
 import logging
 
-# Add the project root to the Python path to allow importing from 'shared'
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add the project root to the Python path to allow importing from 'backend'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from shared.db import get_db_cursor
+from backend.shared.db import get_db_cursor
 
 # --- Basic Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

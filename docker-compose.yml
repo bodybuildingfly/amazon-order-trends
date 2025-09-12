@@ -8,15 +8,13 @@ services:
       - "3000:3000" # React frontend
       - "5001:5001" # Flask backend
     volumes:
-      - ./api:/app/api
-      - ./ingestion:/app/ingestion
-      - ./shared:/app/shared
+      - ./backend:/app/backend
       - ./frontend:/app/frontend
-      - ./migrations:/app/migrations
       - /app/frontend/node_modules
     environment:
       # --- Add FLASK_APP to tell Flask where the app is ---
-      - FLASK_APP=api/app.py
+      - FLASK_APP=backend.api.app
+      - PYTHONPATH=/app
       - FLASK_ENV=development
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_USER=${POSTGRES_USER}
@@ -27,6 +25,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - WATCHPACK_POLLING=true
+      - MIGRATIONS_DIR=/app/backend/migrations/versions
     # command: >
     #   sh -c "
     #     echo 'Waiting for database...' && sleep 5 &&

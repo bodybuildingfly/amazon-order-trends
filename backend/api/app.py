@@ -1,6 +1,6 @@
 import os
-from api import create_app
-from api.extensions import scheduler
+from backend.api import create_app
+from backend.api.extensions import scheduler
 
 # Create the Flask app using the factory
 app = create_app()

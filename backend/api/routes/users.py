@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
 from flask_jwt_extended import get_jwt_identity
-from shared.db import get_db_cursor
-from api.helpers.decorators import admin_required
+from backend.shared.db import get_db_cursor
+from backend.api.helpers.decorators import admin_required
 
 users_bp = Blueprint('users_bp', __name__)
 

@@ -18,15 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY api/requirements.txt ./api/
-COPY ingestion/requirements.txt ./ingestion/
-RUN pip install --no-cache-dir -r api/requirements.txt && \
-    pip install --no-cache-dir -r ingestion/requirements.txt
+# Copy only the requirements files first to leverage Docker cache
+COPY backend/api/requirements.txt ./api-requirements.txt
+COPY backend/ingestion/requirements.txt ./ingestion-requirements.txt
+RUN pip install --no-cache-dir -r api-requirements.txt && \
+    pip install --no-cache-dir -r ingestion-requirements.txt
 
-# Copy the backend API and supporting code
-COPY api/ ./api/
-COPY ingestion/ ./ingestion/
-COPY shared/ ./shared/
+# Copy the entire backend application code
+COPY backend/ .
 
 # Copy the built static frontend from the build-stage
 COPY --from=build-stage /app/frontend/build ./frontend/build

@@ -3,9 +3,9 @@ import threading
 from datetime import datetime
 from flask import Flask, current_app
 
-from shared.db import get_db_cursor
-from ingestion.ingestion_script import main as run_ingestion_generator
-from api.services.notification_service import send_discord_notification
+from backend.shared.db import get_db_cursor
+from backend.ingestion.ingestion_script import main as run_ingestion_generator
+from backend.api.services.notification_service import send_discord_notification
 
 def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int):
     """

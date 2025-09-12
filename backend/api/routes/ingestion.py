@@ -4,9 +4,9 @@ import subprocess
 from flask import Blueprint, request, jsonify, current_app, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from shared.db import get_db_cursor
-from api.helpers.decorators import admin_required
-from api.services.ingestion_service import (
+from backend.shared.db import get_db_cursor
+from backend.api.helpers.decorators import admin_required
+from backend.api.services.ingestion_service import (
     run_manual_ingestion_job,
     run_scheduled_ingestion_job_stream,
 )

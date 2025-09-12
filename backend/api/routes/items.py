@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from shared.db import get_db_cursor
+from backend.shared.db import get_db_cursor
 
 items_bp = Blueprint('items_bp', __name__)
 

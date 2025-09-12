@@ -6,11 +6,11 @@ import logging
 import atexit
 from flask import Flask, send_from_directory, jsonify
 from werkzeug.security import generate_password_hash
-from api.config import config_by_name
-from api.extensions import cors, jwt, scheduler
-from api.helpers.encryption import initialize_fernet
-from shared.db import init_pool, get_db_cursor, close_pool
-from api.services.ingestion_service import run_scheduled_ingestion_job_stream
+from backend.api.config import config_by_name
+from backend.api.extensions import cors, jwt, scheduler
+from backend.api.helpers.encryption import initialize_fernet
+from backend.shared.db import init_pool, get_db_cursor, close_pool
+from backend.api.services.ingestion_service import run_scheduled_ingestion_job_stream
 
 def create_app(config_name=None):
     """Application factory."""
@@ -54,7 +54,7 @@ def create_app(config_name=None):
     @app.cli.command("db-migrate")
     def db_migrate_command():
         """Applies database migrations."""
-        migrations_dir = '/app/migrations/versions' # Use absolute path in container
+        migrations_dir = os.environ.get('MIGRATIONS_DIR', '/app/migrations/versions')
         app.logger.info("Starting database migration process...")
 
         try:
