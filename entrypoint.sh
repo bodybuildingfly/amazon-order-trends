@@ -9,6 +9,10 @@ echo "Applying database migrations..."
 export FLASK_APP=backend.api:create_app
 flask db-migrate
 
+# Seed the database with the admin user if it doesn't exist.
+echo "Seeding admin user..."
+flask seed-admin
+
 # Start the Gunicorn server.
 # 'exec' replaces the shell process with the Gunicorn process.
 # This is important for proper signal handling (e.g., stopping the container).
