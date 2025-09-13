@@ -7,5 +7,6 @@ Werkzeug
 Flask-JWT-Extended
 cryptography
 gevent
+psycogreen
 Flask-APScheduler
 requests

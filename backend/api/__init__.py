@@ -1,7 +1,11 @@
-from gevent import monkey
-monkey.patch_all()
-
+# Conditionally apply gevent monkey patching for production
 import os
+if os.environ.get('FLASK_ENV') == 'production':
+    from gevent import monkey
+    monkey.patch_all()
+    from psycogreen.gevent import patch_psycopg
+    patch_psycopg()
+
 import logging
 import atexit
 from flask import Flask, send_from_directory, jsonify
@@ -16,8 +20,13 @@ def create_app(config_name=None):
     """Application factory."""
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
+
+    # Conditionally set static folder for production
+    static_folder_path = None
+    if config_name == 'production':
+        static_folder_path = '../../frontend/build'
         
-    app = Flask(__name__, static_folder='../frontend/build', static_url_path='/')
+    app = Flask(__name__, static_folder=static_folder_path, static_url_path='/')
     app.config.from_object(config_by_name[config_name])
 
     # --- Initialize Database Pool ---
@@ -156,13 +165,14 @@ def create_app(config_name=None):
                         app.logger.error(f"An error occurred during the scheduled ingestion cron job wrapper: {e}", exc_info=True)
 
 
-    # --- Static Frontend Serving ---
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def serve(path):
-        if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-            return send_from_directory(app.static_folder, path)
-        else:
-            return send_from_directory(app.static_folder, 'index.html')
+    # Conditionally serve static files in production
+    if config_name == 'production':
+        @app.route('/', defaults={'path': ''})
+        @app.route('/<path:path>')
+        def serve(path):
+            if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+                return send_from_directory(app.static_folder, path)
+            else:
+                return send_from_directory(app.static_folder, 'index.html')
 
     return app

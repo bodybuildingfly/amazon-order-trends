@@ -25,10 +25,14 @@ RUN pip install --no-cache-dir -r api-requirements.txt && \
     pip install --no-cache-dir -r ingestion-requirements.txt
 
 # Set the Python path to include the /app directory
-ENV PYTHONPATH /app
+ENV PYTHONPATH=/app
+# Set the migrations directory path
+ENV MIGRATIONS_DIR=/app/backend/migrations/versions
+# Set the Flask environment to production
+ENV FLASK_ENV=production
 
 # Copy the entire backend application code
-COPY backend/ .
+COPY backend ./backend
 
 # Copy the built static frontend from the build-stage
 COPY --from=build-stage /app/frontend/build ./frontend/build
