@@ -158,6 +158,10 @@ const AdminSettingsPage = () => {
 
             if (type === 'job_update') {
                 setJob(prevJob => ({ ...prevJob, ...payload }));
+            } else if (type === 'info') {
+                toast.info(payload);
+                setIsImporting(false);
+                eventSource.close();
             } else if (type === 'error') {
                 toast.error(`An error occurred: ${payload}`);
                 setJob(prevJob => ({ ...prevJob, status: 'failed', error: payload }));

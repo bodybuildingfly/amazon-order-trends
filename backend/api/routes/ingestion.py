@@ -112,12 +112,20 @@ def amazon_logout():
 def run_scheduled_ingestion_stream():
     """Manually triggers the scheduled ingestion job and streams progress."""
     current_user_id = get_jwt_identity()
+    app = current_app._get_current_object()
 
     def generate_events():
         job_id = None
-        app = current_app._get_current_object()
         with app.app_context():
             try:
+                # First, check if any users have ongoing retrieval enabled
+                with get_db_cursor() as cur:
+                    cur.execute("SELECT 1 FROM users WHERE ongoing_data_retrieval_enabled = TRUE LIMIT 1")
+                    if cur.fetchone() is None:
+                        app.logger.info("Scheduled ingestion triggered, but no users are enabled. Aborting.")
+                        yield f"data: {json.dumps({'type': 'info', 'payload': 'No users have enabled ongoing data retrieval.'})}\n\n"
+                        return
+
                 with get_db_cursor(commit=True) as cur:
                     cur.execute(
                         "INSERT INTO ingestion_jobs (job_type, status) VALUES (%s, %s) RETURNING id",

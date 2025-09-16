@@ -43,6 +43,7 @@ def create_app(config_name=None):
 
     # --- Logging ---
     # Configure Flask's built-in logger to stream to stdout
+    app.logger.handlers.clear()
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO)
     handler.setFormatter(logging.Formatter(
@@ -50,6 +51,7 @@ def create_app(config_name=None):
     ))
     app.logger.addHandler(handler)
     app.logger.setLevel(logging.INFO)
+    app.logger.propagate = False
 
     # --- Register Blueprints ---
     from .routes.auth import auth_bp
