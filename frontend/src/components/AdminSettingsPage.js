@@ -19,10 +19,10 @@ const JobStatusDisplay = ({ job, isImporting }) => {
     const getStatusPill = (status) => {
         const baseClasses = "px-2 py-1 text-xs font-medium rounded-full capitalize";
         const statusMap = {
-            running: "bg-blue-100 text-blue-800 animate-pulse",
-            completed: "bg-green-100 text-green-800",
-            failed: "bg-red-100 text-red-800",
-            pending: "bg-gray-100 text-gray-800",
+            running: "bg-primary text-primary-text animate-pulse",
+            completed: "bg-success text-white",
+            failed: "bg-danger text-danger-text",
+            pending: "bg-secondary text-secondary-text",
         };
         return <span className={`${baseClasses} ${statusMap[status] || statusMap.pending}`}>{status}</span>;
     };
@@ -55,7 +55,7 @@ const JobStatusDisplay = ({ job, isImporting }) => {
                 </div>
             )}
             
-            {error && <p className="text-sm text-red-500 bg-red-100 p-2 rounded-md">Error: {JSON.stringify(error)}</p>}
+            {error && <p className="text-sm text-danger-text bg-danger/20 p-2 rounded-md">Error: {JSON.stringify(error)}</p>}
 
             {details?.users && userIds.length > 0 && (
                  <div className="space-y-2 pt-4 border-t border-border-color">
