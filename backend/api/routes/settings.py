@@ -71,6 +71,8 @@ def save_user_settings():
                         enable_scheduled_ingestion = EXCLUDED.enable_scheduled_ingestion;
                 """, (current_user_id, email, encrypted_password, otp, enable_scheduled_ingestion))
             else:
+                # If no password is provided, we should only be updating an existing record.
+                # Creating a new record without a password would result in an invalid state.
                 cur.execute("""
                     UPDATE user_settings SET
                         amazon_email = %s,
@@ -79,10 +81,8 @@ def save_user_settings():
                     WHERE user_id = %s;
                 """, (email, otp, enable_scheduled_ingestion, current_user_id))
                 if cur.rowcount == 0:
-                    cur.execute("""
-                        INSERT INTO user_settings (user_id, amazon_email, amazon_otp_secret_key, enable_scheduled_ingestion)
-                        VALUES (%s, %s, %s, %s);
-                    """, (current_user_id, email, otp, enable_scheduled_ingestion))
+                    # This case implies a client-side error: trying to save settings for a new user without a password.
+                    return jsonify({"error": "Cannot create new settings without providing a password."}), 400
 
         return jsonify({"message": "User settings saved successfully."}), 200
     except Exception as e:
@@ -107,10 +107,9 @@ def save_admin_settings():
                 WHERE user_id = %s;
             """, (discord_webhook_url, discord_notification_preference, current_user_id))
             if cur.rowcount == 0:
-                cur.execute("""
-                    INSERT INTO user_settings (user_id, discord_webhook_url, discord_notification_preference)
-                    VALUES (%s, %s, %s);
-                """, (current_user_id, discord_webhook_url, discord_notification_preference))
+                return jsonify({
+                    "error": "User settings not found. Please configure your main user settings before saving admin-specific settings."
+                }), 404
         
         return jsonify({"message": "Admin settings saved successfully."}), 200
     except Exception as e:
