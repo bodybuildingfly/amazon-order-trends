@@ -87,7 +87,7 @@ const UserSettingsPage = () => {
         setIsImporting(jobDetails?.status === 'running');
 
         if (jobDetails && jobDetails.status !== prevJobStatus) {
-            if (jobDetails.status === 'completed') {
+            if (jobDetails.show_notification) {
                 toast.success('Manual import finished successfully.');
             } else if (jobDetails.status === 'failed') {
                 const errorMsg = jobDetails.error || 'An unknown error occurred.';
