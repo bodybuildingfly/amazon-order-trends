@@ -42,7 +42,14 @@ def create_app(config_name=None):
     scheduler.init_app(app)
 
     # --- Logging ---
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    # Configure Flask's built-in logger to stream to stdout
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    app.logger.addHandler(handler)
+    app.logger.setLevel(logging.INFO)
 
     # --- Register Blueprints ---
     from .routes.auth import auth_bp

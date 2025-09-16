@@ -75,7 +75,57 @@ def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int):
         finally:
             with get_db_cursor(commit=True) as cur:
                 cur.execute("UPDATE ingestion_jobs SET updated_at = %s WHERE id = %s", (datetime.utcnow(), job_id))
-            app.logger.info(f"Manual ingestion job {job_id} finished for user {user_id}.")
+            
+            app.logger.info(f"Manual ingestion job {job_id} finished for user {user_id}. Checking for notifications...")
+            try:
+                with get_db_cursor() as cur:
+                    # For manual jobs, we now use the admin's settings globally.
+                    # First, get the admin user's ID by their role.
+                    cur.execute("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
+                    admin_user_result = cur.fetchone()
+                    
+                    if not admin_user_result:
+                        app.logger.error("Could not find an admin user to use for global notifications.")
+                        settings = None
+                    else:
+                        admin_user_id = admin_user_result[0]
+                        app.logger.info(f"Found admin user with ID {admin_user_id} for global notification settings.")
+                        cur.execute(
+                            "SELECT discord_webhook_url, discord_notification_preference FROM user_settings WHERE user_id = %s",
+                            (admin_user_id,)
+                        )
+                        settings = cur.fetchone()
+                
+                if settings:
+                    webhook_url, pref = settings
+                    job_has_error = bool(details.get('error'))
+                    app.logger.info(f"[Notification Check] User: {user_id}, Job: {job_id}, Webhook Present: {bool(webhook_url)}, Preference: '{pref}', Job Has Error: {job_has_error}")
+
+                    should_send = False
+                    if webhook_url:
+                        if pref == 'always':
+                            should_send = True
+                        elif pref == 'errors_only' and job_has_error:
+                            should_send = True
+                    
+                    app.logger.info(f"[Notification Check] Final decision for job {job_id}: should_send = {should_send}")
+
+                    if should_send:
+                        app.logger.info(f"Preparing to send notification for manual job {job_id}...")
+                        if job_has_error:
+                            title = f"Manual Ingestion Job Failed (ID: {job_id})"
+                            description = "Your manually triggered ingestion job has failed."
+                            color = 15158332  # Red
+                        else:
+                            title = f"Manual Ingestion Job Completed (ID: {job_id})"
+                            description = "Your manually triggered ingestion job has finished successfully."
+                            color = 3066993  # Green
+                        
+                        send_discord_notification(webhook_url, title, description, color, details.get('log', []))
+                else:
+                    app.logger.info(f"No notification settings found for user {user_id}.")
+            except Exception as e:
+                app.logger.error(f"Failed to send notification for manual job {job_id}: {e}", exc_info=True)
 
 
 def run_scheduled_ingestion_job_stream(job_id, triggered_by_user_id=None):
@@ -157,27 +207,48 @@ def run_scheduled_ingestion_job_stream(job_id, triggered_by_user_id=None):
                 cur.execute("UPDATE ingestion_jobs SET status = 'failed', details = %s WHERE id = %s", (json.dumps(details), job_id))
             yield {'type': 'error', 'payload': str(e)}
         finally:
-            # 4. Send notification if manually triggered
-            app.logger.info(f"Notification check for job {job_id}. Triggered by user: {triggered_by_user_id}")
-            if triggered_by_user_id:
+            # 4. Send notification
+            notification_user_id = triggered_by_user_id
+            is_automated_run = not bool(triggered_by_user_id)
+
+            if is_automated_run:
+                # Automated run, send summary to admin (user_id='1')
+                notification_user_id = '1'
+                app.logger.info(f"Job {job_id} was an automated run. Attempting to send summary to admin (user_id='1').")
+            else:
+                app.logger.info(f"Job {job_id} was manually triggered by user {notification_user_id}. Checking preferences.")
+
+            if notification_user_id:
                 try:
                     with get_db_cursor() as cur:
                         cur.execute(
                             "SELECT discord_webhook_url, discord_notification_preference FROM user_settings WHERE user_id = %s",
-                            (triggered_by_user_id,)
+                            (notification_user_id,)
                         )
                         settings = cur.fetchone()
                     
-                    app.logger.info(f"Found settings for user {triggered_by_user_id}: {settings}")
+                    app.logger.info(f"Found notification settings for user {notification_user_id}: {settings}")
 
                     if settings:
                         webhook_url, pref = settings
-                        app.logger.info(f"Webhook URL: '{webhook_url}', Preference: '{pref}'")
                         
+                        # For automated runs, we always send if a webhook is present, ignoring the 'errors_only' preference for the admin.
+                        # For manual runs, we respect the user's preference.
                         overall_status_is_error = job_failed or any(u.get('status') == 'failed' for u in details.get('users', {}).values())
-                        app.logger.info(f"Overall job status is_error: {overall_status_is_error}")
-
-                        should_send = bool(webhook_url)
+                        
+                        should_send = False
+                        if webhook_url:
+                            if is_automated_run:
+                                should_send = True
+                                app.logger.info("Sending notification for automated run to admin.")
+                            else: # Manually triggered run
+                                if pref == 'always':
+                                    should_send = True
+                                    app.logger.info("Notification preference is 'always'.")
+                                elif pref == 'errors_only' and overall_status_is_error:
+                                    should_send = True
+                                    app.logger.info("Notification preference is 'errors_only' and the job has errors.")
+                        
                         app.logger.info(f"Final decision to send notification: {should_send}")
 
                         if should_send:
@@ -195,19 +266,22 @@ def run_scheduled_ingestion_job_stream(job_id, triggered_by_user_id=None):
                                     all_logs.append(f"ERROR: {u_details.get('error', 'Unknown error')}")
                                 all_logs.append("")
 
+                            # Modify title for automated runs
+                            base_title = "Scheduled Ingestion Run Finished"
+                            if is_automated_run:
+                                base_title = "Automated Daily Ingestion Finished"
+
                             if overall_status_is_error:
-                                title = "Scheduled Ingestion Run Finished with Errors"
+                                title = f"{base_title} with Errors"
                                 description = "The scheduled data ingestion process ran, but one or more users failed."
                                 color = 15158332  # Red
                             else:
-                                title = "Scheduled Ingestion Run Successful"
+                                title = f"{base_title} Successfully"
                                 description = "The scheduled data ingestion process completed for all users."
                                 color = 3066993  # Green
                             
                             send_discord_notification(webhook_url, title, description, color, all_logs)
                     else:
-                        app.logger.info(f"No settings found for triggering user {triggered_by_user_id}, no notification will be sent.")
+                        app.logger.info(f"No notification settings found for user {notification_user_id}, no notification will be sent.")
                 except Exception as e:
                     app.logger.error(f"Failed to send Discord notification for job {job_id}: {e}", exc_info=True)
-            else:
-                app.logger.info(f"Job was not manually triggered, skipping notification.")

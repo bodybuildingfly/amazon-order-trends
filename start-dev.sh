@@ -30,8 +30,8 @@ fi
 echo "Admin user seeding successful."
 
 # Step 3: Start the Flask backend API in the background
-echo "Starting Flask backend server on port 5001..."
-flask run --host=0.0.0.0 --port=5001 &
+echo "Starting Flask backend server on port 5001 with auto-reloading..."
+flask run --host=0.0.0.0 --port=5001 --reload &
 
 # Step 4: Start the React frontend development server in the foreground
 echo "Starting React frontend server on port 3000..."

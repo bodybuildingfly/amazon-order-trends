@@ -80,7 +80,7 @@ const AdminSettingsPage = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState({
         discord_webhook_url: '',
-        discord_notification_preference: 'off',
+        discord_notification_preference: 'never',
     });
     
     const { user } = useAuth();
@@ -95,7 +95,7 @@ const AdminSettingsPage = () => {
                 const settingsRes = await apiClient.get('/api/settings');
                 setFormData({
                     discord_webhook_url: settingsRes.data.discord_webhook_url || '',
-                    discord_notification_preference: settingsRes.data.discord_notification_preference || 'off',
+                    discord_notification_preference: settingsRes.data.discord_notification_preference || 'never',
                 });
 
                 const jobRes = await apiClient.get('/api/ingestion/jobs/latest');
@@ -213,9 +213,9 @@ const AdminSettingsPage = () => {
                                     onChange={handleFormChange}
                                     className="form-input"
                                 >
-                                    <option value="off">Disabled</option>
-                                    <option value="on_error">Notify on Error</option>
-                                    <option value="on_all">Notify on All Runs</option>
+                                    <option value="never">Disabled</option>
+                                    <option value="errors_only">Notify on Error</option>
+                                    <option value="always">Notify on All Runs</option>
                                 </select>
                             </div>
                         </div>
