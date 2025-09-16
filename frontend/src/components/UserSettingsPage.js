@@ -89,6 +89,9 @@ const UserSettingsPage = () => {
         if (jobDetails && jobDetails.status !== prevJobStatus) {
             if (jobDetails.show_notification) {
                 toast.success('Manual import finished successfully.');
+                // Mark the notification as seen
+                apiClient.post('/api/ingestion/jobs/seen', { job_id: jobDetails.id })
+                    .catch(err => console.error("Failed to mark notification as seen:", err));
             } else if (jobDetails.status === 'failed') {
                 const errorMsg = jobDetails.error || 'An unknown error occurred.';
                 toast.error(`Import failed: ${errorMsg}`);
@@ -270,7 +273,7 @@ const UserSettingsPage = () => {
                         {isImporting ? 'Importing...' : 'Run Manual Import'}
                     </button>
                 </div>
-                {(isImporting || jobDetails?.status === 'completed' || jobDetails?.status === 'failed') && (
+                {(isImporting || (jobDetails?.status === 'completed' && !jobDetails?.notification_seen) || jobDetails?.status === 'failed') && (
                     <div className="space-y-2 pt-4 border-t border-border-color">
                         <p className="text-sm font-medium text-text-secondary">{importStatus}</p>
                         <progress 

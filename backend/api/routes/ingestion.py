@@ -82,12 +82,6 @@ def get_manual_ingestion_status():
 
         show_notification = (status == 'completed' and not notification_seen)
 
-        if show_notification:
-            cur.execute(
-                "UPDATE ingestion_jobs SET notification_seen = TRUE WHERE id = %s",
-                (job_id,)
-            )
-
         # The frontend expects a flat object with 'log' and 'error' keys.
         # We construct this object from the 'details' JSON field.
         response_data = {
@@ -96,7 +90,8 @@ def get_manual_ingestion_status():
             "progress": progress or {"value": 0, "max": 100},
             "log": details.get('log', []),
             "error": details.get('error'),
-            "show_notification": show_notification
+            "show_notification": show_notification,
+            "notification_seen": notification_seen
         }
 
         return jsonify(response_data)
@@ -146,6 +141,24 @@ def run_scheduled_ingestion_stream():
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['X-Accel-Buffering'] = 'no'
     return response
+
+@ingestion_bp.route('/api/ingestion/jobs/seen', methods=['POST'])
+@jwt_required()
+def mark_notification_seen():
+    data = request.get_json()
+    job_id = data.get('job_id')
+    current_user_id = get_jwt_identity()
+    try:
+        with get_db_cursor(commit=True) as cur:
+            cur.execute(
+                "UPDATE ingestion_jobs SET notification_seen = TRUE WHERE id = %s AND user_id = %s",
+                (job_id, current_user_id)
+            )
+        return jsonify({"message": "Notification marked as seen."})
+    except Exception as e:
+        current_app.logger.error(f"Failed to mark notification as seen: {e}", exc_info=True)
+        return jsonify({"error": "Failed to mark notification as seen."}), 500
+
 
 @ingestion_bp.route('/api/ingestion/jobs/latest', methods=['GET'])
 @admin_required()
