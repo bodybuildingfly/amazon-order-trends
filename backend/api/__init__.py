@@ -24,7 +24,8 @@ def create_app(config_name=None):
     # Conditionally set static folder for production
     static_folder_path = None
     if config_name == 'production':
-        static_folder_path = '../../frontend/build'
+        # Use an absolute path to be safe. The app's root is two levels up from this file's directory.
+        static_folder_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'build'))
         
     app = Flask(__name__, static_folder=static_folder_path, static_url_path='/')
     app.config.from_object(config_by_name[config_name])
@@ -179,6 +180,10 @@ def create_app(config_name=None):
         @app.route('/', defaults={'path': ''})
         @app.route('/<path:path>')
         def serve(path):
+            # Do not serve API routes from the frontend catch-all
+            if path.startswith('api/'):
+                return jsonify({"error": "Not Found"}), 404
+            
             if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
                 return send_from_directory(app.static_folder, path)
             else:

@@ -1,6 +1,8 @@
 import json
 import threading
 import subprocess
+import re
+from datetime import datetime, timedelta, time
 from flask import Blueprint, request, jsonify, current_app, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
@@ -190,3 +192,62 @@ def get_latest_ingestion_job():
     except Exception as e:
         current_app.logger.error(f"Failed to fetch latest ingestion job: {e}", exc_info=True)
         return jsonify({"error": "Failed to fetch latest job."}), 500
+
+
+@ingestion_bp.route('/api/scheduler/status', methods=['GET'])
+@admin_required()
+def get_scheduler_status():
+    """
+    Provides a status summary for the scheduler, including the last run,
+    next scheduled run, and statistics from the last job.
+    """
+    try:
+        with get_db_cursor() as cur:
+            cur.execute("""
+                SELECT created_at, updated_at, details
+                FROM ingestion_jobs
+                WHERE job_type = 'scheduled' AND status = 'completed'
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+            last_job = cur.fetchone()
+
+            if not last_job:
+                return jsonify({
+                    "lastRun": "Never",
+                    "duration": "N/A",
+                    "ordersProcessed": 0,
+                    "nextRun": "Not scheduled",
+                    "error": "No completed scheduled jobs found."
+                })
+
+            created_at, updated_at, details = last_job
+
+            # Calculate duration
+            duration_seconds = (updated_at - created_at).total_seconds()
+            duration_str = f"{int(duration_seconds // 60)}m {int(duration_seconds % 60)}s"
+
+            # Calculate cardsCreated by parsing logs in details
+            cards_created = 0
+            if details and 'users' in details:
+                for user_id, user_data in details['users'].items():
+                    if 'log' in user_data:
+                        for log_entry in user_data['log']:
+                            match = re.search(r"Found (\d+) new orders to process", log_entry)
+                            if match:
+                                cards_created += int(match.group(1))
+
+            # Calculate next run: 1:00 AM on the day after the last run.
+            next_run_date = created_at.date() + timedelta(days=1)
+            next_run_time = datetime.combine(next_run_date, time(1, 0))
+
+            return jsonify({
+                "lastRun": created_at.isoformat(),
+                "duration": duration_str,
+                "ordersProcessed": cards_created,
+                "nextRun": next_run_time.isoformat()
+            })
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to fetch scheduler status: {e}", exc_info=True)
+        return jsonify({"error": "Could not load status."}), 500

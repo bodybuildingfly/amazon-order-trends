@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api';
+import SchedulerStatus from './SchedulerStatus';
 
 const Spinner = () => <div className="flex justify-center items-center p-10"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
 
@@ -187,6 +188,7 @@ const AdminSettingsPage = () => {
 
     return (
         <div className="space-y-8 max-w-3xl mx-auto">
+            <SchedulerStatus />
             <div className="bg-surface p-6 rounded-2xl shadow-lg">
                 <h2 className="text-3xl font-semibold text-text-primary mb-6">Admin Settings</h2>
                 <form onSubmit={handleSaveSettings} className="space-y-6">
