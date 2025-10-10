@@ -10,7 +10,6 @@ from backend.shared.db import get_db_cursor
 from backend.api.helpers.decorators import admin_required
 from backend.api.services.ingestion_service import (
     run_manual_ingestion_job,
-    run_scheduled_ingestion_job_stream,
 )
 
 ingestion_bp = Blueprint('ingestion_bp', __name__)
@@ -109,48 +108,6 @@ def amazon_logout():
         current_app.logger.error(f"Amazon logout command failed: {e}", exc_info=True)
         return jsonify({"error": "Failed to execute Amazon logout command."}), 500
 
-@ingestion_bp.route("/api/scheduler/run", methods=['GET'])
-@admin_required()
-def run_scheduled_ingestion_stream():
-    """Manually triggers the scheduled ingestion job and streams progress."""
-    current_user_id = get_jwt_identity()
-    app = current_app._get_current_object()
-
-    def generate_events():
-        job_id = None
-        with app.app_context():
-            try:
-                # First, check if any users have ongoing retrieval enabled
-                with get_db_cursor() as cur:
-                    cur.execute("SELECT 1 FROM users WHERE ongoing_data_retrieval_enabled = TRUE LIMIT 1")
-                    if cur.fetchone() is None:
-                        app.logger.info("Scheduled ingestion triggered, but no users are enabled. Aborting.")
-                        yield f"data: {json.dumps({'type': 'info', 'payload': 'No users have enabled ongoing data retrieval.'})}\n\n"
-                        return
-
-                with get_db_cursor(commit=True) as cur:
-                    cur.execute(
-                        "INSERT INTO ingestion_jobs (job_type, status) VALUES (%s, %s) RETURNING id",
-                        ('scheduled', 'pending')
-                    )
-                    job_id = cur.fetchone()[0]
-                
-                app.logger.info(f"Starting manual stream for scheduled ingestion job {job_id}.")
-                
-                for update in run_scheduled_ingestion_job_stream(job_id, triggered_by_user_id=current_user_id):
-                    yield f"data: {json.dumps(update)}\n\n"
-
-            except Exception as e:
-                app.logger.error(f"Failed to start scheduled ingestion stream: {e}", exc_info=True)
-                yield f"data: {json.dumps({'type': 'error', 'payload': str(e)})}\n\n"
-            finally:
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                app.logger.info(f"[SSE] Stream closed for job {job_id}.")
-
-    response = Response(generate_events(), mimetype='text/event-stream')
-    response.headers['Cache-Control'] = 'no-cache'
-    response.headers['X-Accel-Buffering'] = 'no'
-    return response
 
 @ingestion_bp.route('/api/ingestion/jobs/seen', methods=['POST'])
 @jwt_required()
@@ -168,86 +125,3 @@ def mark_notification_seen():
     except Exception as e:
         current_app.logger.error(f"Failed to mark notification as seen: {e}", exc_info=True)
         return jsonify({"error": "Failed to mark notification as seen."}), 500
-
-
-@ingestion_bp.route('/api/ingestion/jobs/latest', methods=['GET'])
-@admin_required()
-def get_latest_ingestion_job():
-    """Returns the most recent 'scheduled' ingestion job."""
-    try:
-        with get_db_cursor() as cur:
-            cur.execute("""
-                SELECT id, job_type, status, progress, details, created_at, updated_at
-                FROM ingestion_jobs
-                WHERE job_type = 'scheduled'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """)
-            job = cur.fetchone()
-            if job:
-                job_dict = dict(zip([desc[0] for desc in cur.description], job))
-                return jsonify(job_dict)
-            else:
-                return jsonify(None)
-    except Exception as e:
-        current_app.logger.error(f"Failed to fetch latest ingestion job: {e}", exc_info=True)
-        return jsonify({"error": "Failed to fetch latest job."}), 500
-
-
-@ingestion_bp.route('/api/scheduler/status', methods=['GET'])
-@admin_required()
-def get_scheduler_status():
-    """
-    Provides a status summary for the scheduler, including the last run,
-    next scheduled run, and statistics from the last job.
-    """
-    try:
-        with get_db_cursor() as cur:
-            cur.execute("""
-                SELECT created_at, updated_at, details
-                FROM ingestion_jobs
-                WHERE job_type = 'scheduled' AND status = 'completed'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """)
-            last_job = cur.fetchone()
-
-            if not last_job:
-                return jsonify({
-                    "lastRun": "Never",
-                    "duration": "N/A",
-                    "ordersProcessed": 0,
-                    "nextRun": "Not scheduled",
-                    "error": "No completed scheduled jobs found."
-                })
-
-            created_at, updated_at, details = last_job
-
-            # Calculate duration
-            duration_seconds = (updated_at - created_at).total_seconds()
-            duration_str = f"{int(duration_seconds // 60)}m {int(duration_seconds % 60)}s"
-
-            # Calculate cardsCreated by parsing logs in details
-            cards_created = 0
-            if details and 'users' in details:
-                for user_id, user_data in details['users'].items():
-                    if 'log' in user_data:
-                        for log_entry in user_data['log']:
-                            match = re.search(r"Found (\d+) new orders to process", log_entry)
-                            if match:
-                                cards_created += int(match.group(1))
-
-            # Calculate next run: 1:00 AM on the day after the last run.
-            next_run_date = created_at.date() + timedelta(days=1)
-            next_run_time = datetime.combine(next_run_date, time(1, 0))
-
-            return jsonify({
-                "lastRun": created_at.isoformat(),
-                "duration": duration_str,
-                "ordersProcessed": cards_created,
-                "nextRun": next_run_time.isoformat()
-            })
-
-    except Exception as e:
-        current_app.logger.error(f"Failed to fetch scheduler status: {e}", exc_info=True)
-        return jsonify({"error": "Could not load status."}), 500

@@ -33,7 +33,6 @@ const UserSettingsPage = () => {
         amazon_email: '',
         amazon_password: '',
         amazon_otp_secret_key: '',
-        enable_scheduled_ingestion: false,
     });
 
     const pollImportStatus = useCallback(async () => {
@@ -109,7 +108,6 @@ const UserSettingsPage = () => {
                     ...prev,
                     amazon_email: settingsRes.data.amazon_email,
                     amazon_otp_secret_key: settingsRes.data.amazon_otp_secret_key,
-                    enable_scheduled_ingestion: settingsRes.data.enable_scheduled_ingestion || false,
                 }));
                 setIsConfigured(settingsRes.data.is_configured);
 
@@ -222,23 +220,6 @@ const UserSettingsPage = () => {
                     <div>
                         <label htmlFor="amazon_otp_secret_key" className="form-label">2FA Secret Key (Optional)</label>
                         <input type="text" name="amazon_otp_secret_key" id="amazon_otp_secret_key" value={formData.amazon_otp_secret_key} onChange={handleFormChange} className="form-input" />
-                    </div>
-                    <div className="pt-2">
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                name="enable_scheduled_ingestion"
-                                checked={formData.enable_scheduled_ingestion}
-                                onChange={handleFormChange}
-                                className="form-checkbox"
-                            />
-                            <span className="text-text-secondary">
-                                Enable ongoing data retrieval
-                                <p className="text-xs text-text-muted">
-                                    When selected, your Amazon orders will be automatically pulled every morning at 1am.
-                                </p>
-                            </span>
-                        </label>
                     </div>
                     <div className="flex justify-end">
                         <button type="submit" disabled={isSaving} className="form-button-primary">

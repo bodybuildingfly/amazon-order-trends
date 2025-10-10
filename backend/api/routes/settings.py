@@ -14,19 +14,18 @@ def get_settings():
         with get_db_cursor() as cur:
             cur.execute(
                 """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, 
-                          enable_scheduled_ingestion, discord_webhook_url, discord_notification_preference 
+                          discord_webhook_url, discord_notification_preference 
                    FROM user_settings WHERE user_id = %s""",
                 (current_user_id,)
             )
             settings_row = cur.fetchone()
 
         if settings_row:
-            email, password_encrypted, otp, enable_scheduled_ingestion, webhook_url, notification_pref = settings_row
+            email, password_encrypted, otp, webhook_url, notification_pref = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
                 "amazon_otp_secret_key": otp or '',
-                "enable_scheduled_ingestion": enable_scheduled_ingestion,
                 "discord_webhook_url": webhook_url or '',
                 "discord_notification_preference": notification_pref or 'off',
             }), 200
@@ -36,7 +35,6 @@ def get_settings():
                 "is_configured": False,
                 "amazon_email": '',
                 "amazon_otp_secret_key": '',
-                "enable_scheduled_ingestion": False,
                 "discord_webhook_url": '',
                 "discord_notification_preference": 'off',
             }), 200
@@ -55,31 +53,28 @@ def save_user_settings():
         email = data.get('amazon_email')
         password = data.get('amazon_password')
         otp = data.get('amazon_otp_secret_key')
-        enable_scheduled_ingestion = data.get('enable_scheduled_ingestion', False)
 
         with get_db_cursor(commit=True) as cur:
             # Logic to insert or update user settings
             if password:
                 encrypted_password = fernet.encrypt(password.encode('utf-8'))
                 cur.execute("""
-                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, enable_scheduled_ingestion)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         amazon_email = EXCLUDED.amazon_email,
                         amazon_password_encrypted = EXCLUDED.amazon_password_encrypted,
-                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key,
-                        enable_scheduled_ingestion = EXCLUDED.enable_scheduled_ingestion;
-                """, (current_user_id, email, encrypted_password, otp, enable_scheduled_ingestion))
+                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key;
+                """, (current_user_id, email, encrypted_password, otp))
             else:
                 # If no password is provided, we should only be updating an existing record.
                 # Creating a new record without a password would result in an invalid state.
                 cur.execute("""
                     UPDATE user_settings SET
                         amazon_email = %s,
-                        amazon_otp_secret_key = %s,
-                        enable_scheduled_ingestion = %s
+                        amazon_otp_secret_key = %s
                     WHERE user_id = %s;
-                """, (email, otp, enable_scheduled_ingestion, current_user_id))
+                """, (email, otp, current_user_id))
                 if cur.rowcount == 0:
                     # This case implies a client-side error: trying to save settings for a new user without a password.
                     return jsonify({"error": "Cannot create new settings without providing a password."}), 400

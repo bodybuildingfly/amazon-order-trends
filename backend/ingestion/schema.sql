@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS user_settings (
     amazon_email VARCHAR(255),
     amazon_password_encrypted BYTEA, -- Correct data type for encrypted data
     amazon_otp_secret_key VARCHAR(255),
-    enable_scheduled_ingestion BOOLEAN DEFAULT FALSE NOT NULL,
     discord_webhook_url TEXT,
     discord_notification_preference VARCHAR(20) DEFAULT 'off' NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

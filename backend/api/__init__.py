@@ -14,7 +14,6 @@ from backend.api.config import config_by_name
 from backend.api.extensions import cors, jwt, scheduler
 from backend.api.helpers.encryption import initialize_fernet
 from backend.shared.db import init_pool, get_db_cursor, close_pool
-from backend.api.services.ingestion_service import run_scheduled_ingestion_job_stream
 
 def create_app(config_name=None):
     """Application factory."""
@@ -149,30 +148,6 @@ def create_app(config_name=None):
             app.logger.error(f"An error occurred during admin user seeding: {e}")
             raise
 
-    # --- Scheduled Jobs ---
-    # We need to define the job within the factory to have access to the app context
-    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        if not scheduler.get_job('scheduled_ingestion'):
-            @scheduler.task('cron', id='scheduled_ingestion', hour=1, minute=0)
-            def scheduled_ingestion_job():
-                app.logger.info("Starting scheduled ingestion cron job...")
-                with app.app_context():
-                    job_id = None
-                    try:
-                        with get_db_cursor(commit=True) as cur:
-                            cur.execute(
-                                "INSERT INTO ingestion_jobs (job_type, status) VALUES (%s, %s) RETURNING id",
-                                ('scheduled', 'pending')
-                            )
-                            job_id = cur.fetchone()[0]
-                        
-                        # Consume the generator to execute the job
-                        for _ in run_scheduled_ingestion_job_stream(job_id):
-                            pass
-                        
-                        app.logger.info(f"Scheduled ingestion cron job {job_id} finished.")
-                    except Exception as e:
-                        app.logger.error(f"An error occurred during the scheduled ingestion cron job wrapper: {e}", exc_info=True)
 
 
     # Conditionally serve static files in production
