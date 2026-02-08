@@ -41,6 +41,11 @@ def create_app(config_name=None):
     # Initialize scheduler, but don't start it until the app is run
     scheduler.init_app(app)
 
+    # Add scheduled job for price tracking
+    from backend.api.services.price_service import update_all_prices
+    if not scheduler.get_job('update_prices'):
+         scheduler.add_job(id='update_prices', func=update_all_prices, trigger='interval', hours=1, replace_existing=True)
+
     # --- Logging ---
     # Configure Flask's built-in logger to stream to stdout
     app.logger.handlers.clear()
@@ -60,6 +65,7 @@ def create_app(config_name=None):
     from .routes.items import items_bp
     from .routes.ingestion import ingestion_bp
     from .routes.dashboard import dashboard_bp
+    from .routes.price_tracking import price_tracking_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -67,6 +73,7 @@ def create_app(config_name=None):
     app.register_blueprint(items_bp)
     app.register_blueprint(ingestion_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(price_tracking_bp)
 
     # --- CLI Commands ---
     @app.cli.command("db-migrate")
