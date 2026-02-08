@@ -28,9 +28,49 @@ def get_amazon_price(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'lxml')
 
+        # Check for CAPTCHA or blocking
+        page_title_text = soup.title.string.strip() if soup.title else ""
+        if "CAPTCHA" in page_title_text or "Robot Check" in page_title_text:
+            logger.warning(f"CAPTCHA detected for URL: {url}")
+            return None, None, None
+
         # 1. Extract Title
+        title = None
+
+        # Priority 1: Main product title element
         title_element = soup.select_one('#productTitle')
-        title = title_element.get_text(strip=True) if title_element else "Unknown Product"
+        if title_element:
+            title = title_element.get_text(strip=True)
+
+        # Priority 2: Meta title
+        if not title:
+            meta_title = soup.select_one('meta[name="title"]')
+            if meta_title:
+                title = meta_title.get('content')
+
+        # Priority 3: OG Title
+        if not title:
+            og_title = soup.select_one('meta[property="og:title"]')
+            if og_title:
+                title = og_title.get('content')
+
+        # Priority 4: H1 (sometimes used on mobile or different layouts)
+        if not title:
+            h1_title = soup.select_one('h1')
+            if h1_title:
+                title = h1_title.get_text(strip=True)
+
+        # Priority 5: Fallback to page title, cleaning up "Amazon.com: " prefix/suffix
+        if not title:
+            if page_title_text:
+                # Remove "Amazon.com: " or " : Amazon.com"
+                clean_title = page_title_text.replace("Amazon.com: ", "").replace(" : Amazon.com", "").strip()
+                if clean_title:
+                    title = clean_title
+
+        if not title:
+            title = "Unknown Product"
+            logger.warning(f"Could not extract title for URL: {url}. Page Title was: {page_title_text}")
 
         # 2. Extract Price
         # Try multiple selectors for price
