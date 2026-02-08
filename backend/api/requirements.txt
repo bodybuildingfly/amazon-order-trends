@@ -10,3 +10,6 @@ gevent
 psycogreen
 Flask-APScheduler
 requests
+beautifulsoup4
+fake-useragent
+lxml
