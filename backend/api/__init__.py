@@ -8,7 +8,6 @@ if os.environ.get('FLASK_ENV') == 'production':
 
 import logging
 import atexit
-import fcntl
 from flask import Flask, send_from_directory, jsonify
 from werkzeug.security import generate_password_hash
 from backend.api.config import config_by_name
@@ -58,23 +57,6 @@ def create_app(config_name=None):
     app.logger.addHandler(handler)
     app.logger.setLevel(logging.INFO)
     app.logger.propagate = False
-
-    # Conditionally start the scheduler if environment variable is set
-    if os.environ.get('SCHEDULER_AUTOSTART') == 'True':
-        try:
-            # Open a lock file to ensure only one worker starts the scheduler
-            lock_file = open("/tmp/scheduler.lock", "w")
-            # Try to acquire an exclusive non-blocking lock.
-            # If another process holds the lock, this will raise an IOError (BlockingIOError).
-            fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-
-            if not scheduler.running:
-                scheduler.start()
-                app.logger.info("Scheduler started by this worker.")
-        except IOError:
-            app.logger.info("Scheduler already running in another worker (lock held).")
-        except Exception as e:
-            app.logger.error(f"Failed to start scheduler: {e}")
 
     # --- Register Blueprints ---
     from .routes.auth import auth_bp
