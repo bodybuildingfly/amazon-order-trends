@@ -91,9 +91,12 @@ const UserSettingsPage = () => {
                 // Mark the notification as seen
                 apiClient.post('/api/ingestion/jobs/seen', { job_id: jobDetails.id })
                     .catch(err => console.error("Failed to mark notification as seen:", err));
-            } else if (jobDetails.status === 'failed') {
+            } else if (jobDetails.status === 'failed' && !jobDetails.notification_seen) {
                 const errorMsg = jobDetails.error || 'An unknown error occurred.';
                 toast.error(`Import failed: ${errorMsg}`);
+                // Mark the notification as seen
+                apiClient.post('/api/ingestion/jobs/seen', { job_id: jobDetails.id })
+                    .catch(err => console.error("Failed to mark notification as seen:", err));
             }
         }
     }, [jobDetails, prevJobStatus]);
