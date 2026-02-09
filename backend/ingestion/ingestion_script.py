@@ -15,6 +15,7 @@ import amazonorders.session
 import amazonorders.orders
 import amazonorders.transactions
 from amazonorders.exception import AmazonOrdersError
+from amazonorders.conf import AmazonOrdersConfig
 from dotenv import load_dotenv
 
 # Add the project root to the Python path
@@ -78,11 +79,12 @@ def extract_asin(url):
     match = re.search(r'/(dp|gp/product)/(\w{10})', url)
     return match.group(2) if match else None
 
-def main(user_id, manual_days_override=None):
+def main(user_id, manual_days_override=None, debug=False):
     """
     Generator function to run the ingestion process and yield progress events.
     :param user_id: The UUID of the user for whom to run ingestion.
     :param manual_days_override: An integer specifying the number of days to fetch.
+    :param debug: If True, enables debug logging and output.
     """
     # Reload the library modules to ensure a clean state for each run.
     # This prevents issues where the library retains state from a previous
@@ -97,6 +99,8 @@ def main(user_id, manual_days_override=None):
     error_occurred = False
     settings = {}
     session = None
+    debug_logs = []
+    debug_handler = None
 
     def yield_and_log(event, message):
         """Yields an event and logs the message."""
@@ -109,6 +113,27 @@ def main(user_id, manual_days_override=None):
         
         yield event, message
 
+    if debug:
+        class DebugLogHandler(logging.Handler):
+            def emit(self, record):
+                try:
+                    msg = self.format(record)
+                    debug_logs.append(f"[DEBUG] {msg}")
+                except Exception:
+                    self.handleError(record)
+
+        debug_handler = DebugLogHandler()
+        debug_handler.setLevel(logging.DEBUG)
+        logging.getLogger("amazonorders").addHandler(debug_handler)
+        logging.getLogger("amazonorders").setLevel(logging.DEBUG)
+
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'output')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        config = AmazonOrdersConfig(data={"output_dir": output_dir})
+    else:
+        config = None
 
     try:
         initialize_fernet()
@@ -141,7 +166,9 @@ def main(user_id, manual_days_override=None):
         session = AmazonSession(
             username=settings['AMAZON_EMAIL'],
             password=settings['AMAZON_PASSWORD'],
-            otp_secret_key=settings.get('AMAZON_OTP_SECRET_KEY')
+            otp_secret_key=settings.get('AMAZON_OTP_SECRET_KEY'),
+            debug=debug,
+            config=config
         )
         session.login()
         yield from log_status("Amazon login successful.")
@@ -235,6 +262,14 @@ def main(user_id, manual_days_override=None):
         # Use the logging wrapper to capture the exception
         yield from yield_and_log("error", f"An unexpected error occurred during ingestion: {e}")
     finally:
+        if debug:
+             # Yield all captured logs
+             for log_msg in debug_logs:
+                 yield "status", log_msg
+
+             if debug_handler:
+                 logging.getLogger("amazonorders").removeHandler(debug_handler)
+
         if session:
             session.logout()
             yield from yield_and_log("status", "Amazon session logged out.")
