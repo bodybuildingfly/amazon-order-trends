@@ -19,6 +19,7 @@ const UserSettingsPage = () => {
     const [isConfigured, setIsConfigured] = useState(false);
     const [logoutOutput, setLogoutOutput] = useState('');
     const [importDays, setImportDays] = useState(60);
+    const [isDebugMode, setIsDebugMode] = useState(false);
     
     // State for the import job
     const [jobDetails, setJobDetails] = useState(null);
@@ -178,7 +179,7 @@ const UserSettingsPage = () => {
         });
 
         try {
-            const response = await apiClient.post('/api/ingestion/run', { days: importDays });
+            const response = await apiClient.post('/api/ingestion/run', { days: importDays, debug: isDebugMode });
             const newJobId = response.data.job_id;
             
             if (newJobId) {
@@ -256,6 +257,19 @@ const UserSettingsPage = () => {
                     >
                         {isImporting ? 'Importing...' : 'Run Manual Import'}
                     </button>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="debugMode"
+                            checked={isDebugMode}
+                            onChange={(e) => setIsDebugMode(e.target.checked)}
+                            disabled={isImporting}
+                            className="w-4 h-4 text-primary bg-surface border-border-color rounded focus:ring-primary"
+                        />
+                        <label htmlFor="debugMode" className="text-sm text-text-secondary select-none cursor-pointer">
+                            Enable Debug Mode
+                        </label>
+                    </div>
                 </div>
                 {(isImporting || (jobDetails?.status === 'completed' && !jobDetails?.notification_seen) || jobDetails?.status === 'failed') && (
                     <div className="space-y-2 pt-4 border-t border-border-color">

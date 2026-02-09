@@ -7,7 +7,7 @@ from backend.shared.db import get_db_cursor
 from backend.ingestion.ingestion_script import main as run_ingestion_generator
 from backend.api.services.notification_service import send_discord_notification
 
-def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int):
+def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int, debug: bool = False):
     """
     Runs the ingestion process in a background thread for a single user
     and updates the job status in the database.
@@ -28,7 +28,7 @@ def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int):
             app.logger.info(f"Starting manual ingestion for user {user_id} (Job ID: {job_id}) for {days} days.")
             
             # The core ingestion logic
-            for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days):
+            for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days, debug=debug):
                 if event_type == 'status':
                     log.append(data)
                     details['log'] = log

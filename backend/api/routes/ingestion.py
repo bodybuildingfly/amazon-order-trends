@@ -20,6 +20,7 @@ def run_ingestion_route():
     current_user_id = get_jwt_identity()
     data = request.get_json()
     days = data.get('days', 60)
+    debug = data.get('debug', False)
 
     # Check if a job is already running for this user
     with get_db_cursor() as cur:
@@ -42,7 +43,7 @@ def run_ingestion_route():
         job_id = cur.fetchone()[0]
 
     app = current_app._get_current_object()
-    thread = threading.Thread(target=run_manual_ingestion_job, args=(app, current_user_id, job_id, days))
+    thread = threading.Thread(target=run_manual_ingestion_job, args=(app, current_user_id, job_id, days, debug))
     thread.daemon = True
     thread.start()
 
