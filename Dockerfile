@@ -41,7 +41,7 @@ EXPOSE 5001
 
 # Copy the entrypoint script and make it executable
 COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
+RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x entrypoint.sh
 
 # Set the entrypoint to run the script, which will in turn start Gunicorn
 ENTRYPOINT ["./entrypoint.sh"]
