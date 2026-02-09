@@ -199,7 +199,8 @@ def create_app(config_name=None):
             if path.startswith('api/'):
                 return jsonify({"error": "Not Found"}), 404
             
-            if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+            full_path = os.path.join(app.static_folder, path)
+            if path != "" and os.path.exists(full_path) and os.path.isfile(full_path):
                 return send_from_directory(app.static_folder, path)
             else:
                 return send_from_directory(app.static_folder, 'index.html')
