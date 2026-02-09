@@ -85,7 +85,8 @@ def get_tracked_items():
     try:
         with get_db_cursor() as cur:
             cur.execute("""
-                SELECT id, asin, url, name, current_price, currency, last_checked
+                SELECT id, asin, url, name, current_price, currency, last_checked,
+                       notification_threshold_type, notification_threshold_value
                 FROM tracked_items
                 WHERE user_id = %s
                 ORDER BY created_at DESC
@@ -107,7 +108,8 @@ def get_tracked_item_details(item_id):
         with get_db_cursor() as cur:
             # Get item details
             cur.execute("""
-                SELECT id, asin, url, name, current_price, currency, last_checked
+                SELECT id, asin, url, name, current_price, currency, last_checked,
+                       notification_threshold_type, notification_threshold_value
                 FROM tracked_items
                 WHERE id = %s AND user_id = %s
             """, (item_id, current_user_id))
@@ -148,12 +150,28 @@ def update_tracked_item(item_id):
 
     try:
         with get_db_cursor(commit=True) as cur:
-            cur.execute("""
+            update_fields = ["name = %s"]
+            update_params = [name.strip()]
+
+            if 'notification_threshold_type' in data:
+                update_fields.append("notification_threshold_type = %s")
+                update_params.append(data['notification_threshold_type'])
+
+            if 'notification_threshold_value' in data:
+                update_fields.append("notification_threshold_value = %s")
+                update_params.append(data['notification_threshold_value'])
+
+            update_params.extend([item_id, current_user_id])
+
+            query = f"""
                 UPDATE tracked_items
-                SET name = %s
+                SET {', '.join(update_fields)}
                 WHERE id = %s AND user_id = %s
-                RETURNING id, asin, url, name, current_price, currency, last_checked
-            """, (name.strip(), item_id, current_user_id))
+                RETURNING id, asin, url, name, current_price, currency, last_checked,
+                          notification_threshold_type, notification_threshold_value
+            """
+
+            cur.execute(query, tuple(update_params))
 
             item_row = cur.fetchone()
             if not item_row:

@@ -34,6 +34,7 @@ const UserSettingsPage = () => {
         amazon_email: '',
         amazon_password: '',
         amazon_otp_secret_key: '',
+        price_change_notification_webhook_url: '',
     });
 
     const pollImportStatus = useCallback(async () => {
@@ -112,6 +113,7 @@ const UserSettingsPage = () => {
                     ...prev,
                     amazon_email: settingsRes.data.amazon_email,
                     amazon_otp_secret_key: settingsRes.data.amazon_otp_secret_key,
+                    price_change_notification_webhook_url: settingsRes.data.price_change_notification_webhook_url,
                 }));
                 setIsConfigured(settingsRes.data.is_configured);
 
@@ -170,6 +172,21 @@ const UserSettingsPage = () => {
         setIsSaving(false);
     };
 
+    const handleTestWebhook = async () => {
+        if (!formData.price_change_notification_webhook_url) {
+            toast.error("Please enter a webhook URL first.");
+            return;
+        }
+        try {
+            const { data } = await apiClient.post('/api/settings/test-webhook', {
+                webhook_url: formData.price_change_notification_webhook_url
+            });
+            toast.success(data.message);
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to send test notification.');
+        }
+    };
+
     const handleRunIngestion = async () => {
         // Optimistically update UI
         setJobDetails({
@@ -224,6 +241,33 @@ const UserSettingsPage = () => {
                     <div>
                         <label htmlFor="amazon_otp_secret_key" className="form-label">2FA Secret Key (Optional)</label>
                         <input type="text" name="amazon_otp_secret_key" id="amazon_otp_secret_key" value={formData.amazon_otp_secret_key} onChange={handleFormChange} className="form-input" />
+                    </div>
+                    <div className="pt-4 border-t border-border-color">
+                        <h3 className="text-lg font-semibold text-text-primary mb-4">Notifications</h3>
+                        <div>
+                            <label htmlFor="price_change_notification_webhook_url" className="form-label">Price Change Webhook URL</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="url"
+                                    name="price_change_notification_webhook_url"
+                                    id="price_change_notification_webhook_url"
+                                    value={formData.price_change_notification_webhook_url}
+                                    onChange={handleFormChange}
+                                    className="form-input flex-grow"
+                                    placeholder="https://example.com/webhook"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleTestWebhook}
+                                    className="px-4 py-2 bg-secondary hover:bg-secondary-hover text-white rounded transition-colors whitespace-nowrap"
+                                >
+                                    Test
+                                </button>
+                            </div>
+                            <p className="text-xs text-text-secondary mt-1">
+                                Receive notifications when tracked items drop in price.
+                            </p>
+                        </div>
                     </div>
                     <div className="flex justify-end">
                         <button type="submit" disabled={isSaving} className="form-button-primary">

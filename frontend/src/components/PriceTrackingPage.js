@@ -34,6 +34,8 @@ const PriceTrackingPage = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [editingItemId, setEditingItemId] = useState(null);
     const [editingName, setEditingName] = useState('');
+    const [editingThresholdType, setEditingThresholdType] = useState('percent');
+    const [editingThresholdValue, setEditingThresholdValue] = useState('');
 
     useEffect(() => {
         fetchItems();
@@ -103,11 +105,15 @@ const PriceTrackingPage = () => {
     const handleEditClick = (item) => {
         setEditingItemId(item.id);
         setEditingName(item.name || '');
+        setEditingThresholdType(item.notification_threshold_type || 'percent');
+        setEditingThresholdValue(item.notification_threshold_value || '');
     };
 
     const handleCancelEdit = () => {
         setEditingItemId(null);
         setEditingName('');
+        setEditingThresholdType('percent');
+        setEditingThresholdValue('');
     };
 
     const handleSaveEdit = async (itemId) => {
@@ -116,19 +122,36 @@ const PriceTrackingPage = () => {
             return;
         }
 
+        const payload = {
+            name: editingName,
+            notification_threshold_type: editingThresholdType,
+            notification_threshold_value: editingThresholdValue ? parseFloat(editingThresholdValue) : null
+        };
+
         try {
-            const response = await apiClient.put(`/api/tracked-items/${itemId}`, { name: editingName });
+            const response = await apiClient.put(`/api/tracked-items/${itemId}`, payload);
 
             // Update local state
-            setItems(items.map(item => item.id === itemId ? { ...item, name: response.data.name } : item));
+            setItems(items.map(item => item.id === itemId ? {
+                ...item,
+                name: response.data.name,
+                notification_threshold_type: response.data.notification_threshold_type,
+                notification_threshold_value: response.data.notification_threshold_value
+            } : item));
 
-            // If the selected item is the one being edited, update it too (though name change might not affect details view much)
+            // If the selected item is the one being edited, update it too
             if (selectedItem?.id === itemId) {
-                setSelectedItem({ ...selectedItem, name: response.data.name });
+                setSelectedItem({
+                    ...selectedItem,
+                    name: response.data.name,
+                    notification_threshold_type: response.data.notification_threshold_type,
+                    notification_threshold_value: response.data.notification_threshold_value
+                });
             }
 
             setEditingItemId(null);
             setEditingName('');
+            setEditingThresholdValue('');
             toast.success("Item updated successfully.");
         } catch (error) {
             console.error("Error updating item:", error);
@@ -246,46 +269,81 @@ const PriceTrackingPage = () => {
                                     <div className="flex items-center justify-between">
                                         <div className="flex-grow">
                                             {editingItemId === item.id ? (
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <input
-                                                        type="text"
-                                                        value={editingName}
-                                                        onChange={(e) => setEditingName(e.target.value)}
-                                                        className="p-1 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary flex-grow max-w-md"
-                                                    />
-                                                    <button
-                                                        onClick={() => handleSaveEdit(item.id)}
-                                                        className="text-primary hover:text-primary-hover text-sm font-medium"
-                                                    >
-                                                        Save
-                                                    </button>
-                                                    <button
-                                                        onClick={handleCancelEdit}
-                                                        className="text-text-secondary hover:text-text-primary text-sm font-medium"
-                                                    >
-                                                        Cancel
-                                                    </button>
+                                                <div className="mb-2">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <input
+                                                            type="text"
+                                                            value={editingName}
+                                                            onChange={(e) => setEditingName(e.target.value)}
+                                                            className="p-1 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary flex-grow max-w-md"
+                                                            placeholder="Item Name"
+                                                        />
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-text-secondary">
+                                                        <span>Notify if price drops by:</span>
+                                                        <select
+                                                            value={editingThresholdType}
+                                                            onChange={(e) => setEditingThresholdType(e.target.value)}
+                                                            className="p-1 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary"
+                                                        >
+                                                            <option value="percent">Percentage (%)</option>
+                                                            <option value="absolute">Amount ($)</option>
+                                                        </select>
+                                                        <input
+                                                            type="number"
+                                                            value={editingThresholdValue}
+                                                            onChange={(e) => setEditingThresholdValue(e.target.value)}
+                                                            className="p-1 w-20 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary"
+                                                            placeholder="Value"
+                                                            step="0.01"
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-2 mt-2">
+                                                        <button
+                                                            onClick={() => handleSaveEdit(item.id)}
+                                                            className="text-primary hover:text-primary-hover text-sm font-medium"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                        <button
+                                                            onClick={handleCancelEdit}
+                                                            className="text-text-secondary hover:text-text-primary text-sm font-medium"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ) : (
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline block">
-                                                        {item.name || "Unknown Item"}
-                                                    </a>
-                                                    <button
-                                                        onClick={() => handleEditClick(item)}
-                                                        className="text-text-secondary hover:text-primary transition-colors"
-                                                        title="Edit Name"
-                                                    >
-                                                        {/* Simple Edit Icon (Pencil) */}
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                                <div className="mb-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline block">
+                                                            {item.name || "Unknown Item"}
+                                                        </a>
+                                                        <button
+                                                            onClick={() => handleEditClick(item)}
+                                                            className="text-text-secondary hover:text-primary transition-colors"
+                                                            title="Edit Settings"
+                                                        >
+                                                            {/* Simple Edit Icon (Pencil) */}
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                                                           <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
                                                         </svg>
-                                                    </button>
+                                                        </button>
+                                                    </div>
+                                                    <div className="text-sm text-text-secondary mt-1">
+                                                        {item.notification_threshold_value ? (
+                                                            <span className="mr-2 text-text-accent">
+                                                                Notify drop &ge; {item.notification_threshold_value}{item.notification_threshold_type === 'percent' ? '%' : ''}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="mr-2 text-text-muted">No notification set</span>
+                                                        )}
+                                                        <span>
+                                                            | ASIN: {item.asin || 'N/A'} | Last Checked: {item.last_checked ? new Date(item.last_checked).toLocaleString() : 'Never'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             )}
-                                            <div className="text-sm text-text-secondary">
-                                                ASIN: {item.asin || 'N/A'} | Last Checked: {item.last_checked ? new Date(item.last_checked).toLocaleString() : 'Never'}
-                                            </div>
                                         </div>
                                         <div className="flex items-center gap-6">
                                             <div className="text-right">
