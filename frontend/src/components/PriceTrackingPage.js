@@ -32,6 +32,8 @@ const PriceTrackingPage = () => {
     const [loading, setLoading] = useState(false);
     const [adding, setAdding] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
+    const [editingItemId, setEditingItemId] = useState(null);
+    const [editingName, setEditingName] = useState('');
 
     useEffect(() => {
         fetchItems();
@@ -98,6 +100,42 @@ const PriceTrackingPage = () => {
         }
     };
 
+    const handleEditClick = (item) => {
+        setEditingItemId(item.id);
+        setEditingName(item.name || '');
+    };
+
+    const handleCancelEdit = () => {
+        setEditingItemId(null);
+        setEditingName('');
+    };
+
+    const handleSaveEdit = async (itemId) => {
+        if (!editingName.trim()) {
+            toast.error("Name cannot be empty.");
+            return;
+        }
+
+        try {
+            const response = await apiClient.put(`/api/tracked-items/${itemId}`, { name: editingName });
+
+            // Update local state
+            setItems(items.map(item => item.id === itemId ? { ...item, name: response.data.name } : item));
+
+            // If the selected item is the one being edited, update it too (though name change might not affect details view much)
+            if (selectedItem?.id === itemId) {
+                setSelectedItem({ ...selectedItem, name: response.data.name });
+            }
+
+            setEditingItemId(null);
+            setEditingName('');
+            toast.success("Item updated successfully.");
+        } catch (error) {
+            console.error("Error updating item:", error);
+            toast.error("Failed to update item.");
+        }
+    };
+
     const renderChart = () => {
         if (!selectedItem || !selectedItem.history || selectedItem.history.length === 0) {
             return <p className="text-text-secondary mt-4">No price history available.</p>;
@@ -160,12 +198,6 @@ const PriceTrackingPage = () => {
             }
         };
 
-        // If the theme is light, we should adjust colors, but for now I'll stick to generic or dark-friendly.
-        // The app has a theme toggle, so ideally I should detect theme.
-        // But the chart background is white in my previous snippet:
-        // <div className="mt-4 bg-white p-4 rounded shadow text-black">
-        // Wait, if I use bg-white, text-black is good.
-
         return (
             <div className="mt-4 bg-surface p-4 rounded shadow">
                 <Line data={data} options={options} />
@@ -213,9 +245,44 @@ const PriceTrackingPage = () => {
                                 <div className="p-4">
                                     <div className="flex items-center justify-between">
                                         <div className="flex-grow">
-                                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline block mb-1">
-                                                {item.name || "Unknown Item"}
-                                            </a>
+                                            {editingItemId === item.id ? (
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <input
+                                                        type="text"
+                                                        value={editingName}
+                                                        onChange={(e) => setEditingName(e.target.value)}
+                                                        className="p-1 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary flex-grow max-w-md"
+                                                    />
+                                                    <button
+                                                        onClick={() => handleSaveEdit(item.id)}
+                                                        className="text-primary hover:text-primary-hover text-sm font-medium"
+                                                    >
+                                                        Save
+                                                    </button>
+                                                    <button
+                                                        onClick={handleCancelEdit}
+                                                        className="text-text-secondary hover:text-text-primary text-sm font-medium"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline block">
+                                                        {item.name || "Unknown Item"}
+                                                    </a>
+                                                    <button
+                                                        onClick={() => handleEditClick(item)}
+                                                        className="text-text-secondary hover:text-primary transition-colors"
+                                                        title="Edit Name"
+                                                    >
+                                                        {/* Simple Edit Icon (Pencil) */}
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            )}
                                             <div className="text-sm text-text-secondary">
                                                 ASIN: {item.asin || 'N/A'} | Last Checked: {item.last_checked ? new Date(item.last_checked).toLocaleString() : 'Never'}
                                             </div>
