@@ -196,6 +196,15 @@ def update_all_prices():
                     logger.error(f"Failed to update database for item {item_id}: {e}")
             else:
                 logger.warning(f"Failed to fetch price for item {item_id}")
+                try:
+                    with get_db_cursor(commit=True) as cur:
+                        cur.execute("""
+                            UPDATE tracked_items
+                            SET last_checked = NOW()
+                            WHERE id = %s
+                        """, (item_id,))
+                except Exception as e:
+                    logger.error(f"Failed to update last_checked for item {item_id}: {e}")
 
         logger.info("Finished scheduled price update.")
 
