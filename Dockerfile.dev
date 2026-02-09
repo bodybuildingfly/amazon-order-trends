@@ -30,7 +30,7 @@ RUN npm install --prefix frontend
 COPY start-dev.sh .
 
 # Make the script executable.
-RUN chmod +x ./start-dev.sh
+RUN sed -i 's/\r$//' ./start-dev.sh && chmod +x ./start-dev.sh
 
 # The command that will be run when the container starts.
 CMD ["./start-dev.sh"]
