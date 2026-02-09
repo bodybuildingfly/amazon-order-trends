@@ -136,6 +136,36 @@ def get_tracked_item_details(item_id):
         current_app.logger.error(f"Failed to fetch item details: {e}")
         return jsonify({"error": "Failed to fetch item details"}), 500
 
+@price_tracking_bp.route("/api/tracked-items/<item_id>", methods=['PUT'])
+@jwt_required()
+def update_tracked_item(item_id):
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    name = data.get('name')
+
+    if not name or not name.strip():
+        return jsonify({"error": "Name is required"}), 400
+
+    try:
+        with get_db_cursor(commit=True) as cur:
+            cur.execute("""
+                UPDATE tracked_items
+                SET name = %s
+                WHERE id = %s AND user_id = %s
+                RETURNING id, asin, url, name, current_price, currency, last_checked
+            """, (name.strip(), item_id, current_user_id))
+
+            item_row = cur.fetchone()
+            if not item_row:
+                return jsonify({"error": "Item not found"}), 404
+
+            item = dict(zip([desc[0] for desc in cur.description], item_row))
+
+        return jsonify(item)
+    except Exception as e:
+        current_app.logger.error(f"Failed to update item: {e}")
+        return jsonify({"error": "Failed to update item"}), 500
+
 @price_tracking_bp.route("/api/tracked-items/<item_id>", methods=['DELETE'])
 @jwt_required()
 def delete_tracked_item(item_id):
