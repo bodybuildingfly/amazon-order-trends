@@ -8,7 +8,10 @@ if os.environ.get('FLASK_ENV') == 'production':
 
 import logging
 import atexit
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 from flask import Flask, send_from_directory, jsonify
 from werkzeug.security import generate_password_hash
 from backend.api.config import config_by_name
@@ -27,7 +30,10 @@ def create_app(config_name=None):
         # Use an absolute path to be safe. The app's root is two levels up from this file's directory.
         static_folder_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'build'))
         
-    app = Flask(__name__, static_folder=static_folder_path, static_url_path='/')
+    app = Flask(__name__, static_folder=None)
+    if static_folder_path:
+        app.static_folder = static_folder_path
+
     app.config.from_object(config_by_name[config_name])
 
     # --- Initialize Database Pool ---
@@ -61,20 +67,29 @@ def create_app(config_name=None):
 
     # Conditionally start the scheduler if environment variable is set
     if os.environ.get('SCHEDULER_AUTOSTART') == 'True':
-        try:
-            # Open a lock file to ensure only one worker starts the scheduler
-            lock_file = open("/tmp/scheduler.lock", "w")
-            # Try to acquire an exclusive non-blocking lock.
-            # If another process holds the lock, this will raise an IOError (BlockingIOError).
-            fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if fcntl:
+            try:
+                # Open a lock file to ensure only one worker starts the scheduler
+                lock_file = open("/tmp/scheduler.lock", "w")
+                # Try to acquire an exclusive non-blocking lock.
+                # If another process holds the lock, this will raise an IOError (BlockingIOError).
+                fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
+                # Keep reference to the file object to prevent it from being closed/garbage-collected
+                app.scheduler_lock_file = lock_file
+
+                if not scheduler.running:
+                    scheduler.start()
+                    app.logger.info("Scheduler started by this worker.")
+            except IOError:
+                app.logger.info("Scheduler already running in another worker (lock held).")
+            except Exception as e:
+                app.logger.error(f"Failed to start scheduler: {e}")
+        else:
+            # Fallback for systems without fcntl (e.g., Windows development)
             if not scheduler.running:
                 scheduler.start()
-                app.logger.info("Scheduler started by this worker.")
-        except IOError:
-            app.logger.info("Scheduler already running in another worker (lock held).")
-        except Exception as e:
-            app.logger.error(f"Failed to start scheduler: {e}")
+                app.logger.info("Scheduler started (fcntl not available).")
 
     # --- Register Blueprints ---
     from .routes.auth import auth_bp
