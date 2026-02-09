@@ -136,29 +136,37 @@ def update_all_prices():
         # Fetch all items first to keep the transaction short
         items = []
         with get_db_cursor() as cur:
-            cur.execute("SELECT id, url FROM tracked_items")
-            items = cur.fetchall() # List of (id, url)
+            cur.execute("""
+                SELECT id, url, user_id, notification_threshold_type, notification_threshold_value, name
+                FROM tracked_items
+            """)
+            items = cur.fetchall() # List of tuples
 
         if not items:
             logger.info("No items to track.")
             return
 
-        for item_id, url in items:
+        for item_data in items:
+            item_id = item_data[0]
+            url = item_data[1]
+            user_id = item_data[2]
+            threshold_type = item_data[3]
+            threshold_value = item_data[4]
+            current_name = item_data[5]
+
             logger.info(f"Updating price for item {item_id} ({url})...")
             price, title, _ = get_amazon_price(url)
+
+            # If title was not found, fallback to existing name or "Unknown Product"
+            if not title and current_name:
+                title = current_name
+            elif not title:
+                title = "Unknown Product"
 
             if price is not None:
                 try:
                     with get_db_cursor(commit=True) as cur:
-                        # Update current price and last checked timestamp
-                        # Also update title if it was "Unknown Product" before or just to keep it fresh
-                        cur.execute("""
-                            UPDATE tracked_items
-                            SET current_price = %s, last_checked = NOW(), name = COALESCE(name, %s)
-                            WHERE id = %s
-                        """, (price, title, item_id))
-
-                        # Check if we should insert into price_history
+                        # Fetch last entry before update to check price change
                         cur.execute("""
                             SELECT price, recorded_at
                             FROM price_history
@@ -168,18 +176,24 @@ def update_all_prices():
                         """, (item_id,))
                         last_entry = cur.fetchone()
 
+                        last_price = float(last_entry[0]) if last_entry else None
+                        last_recorded_at = last_entry[1] if last_entry else None
+
+                        # Update current price and last checked timestamp
+                        cur.execute("""
+                            UPDATE tracked_items
+                            SET current_price = %s, last_checked = NOW(), name = COALESCE(%s, name)
+                            WHERE id = %s
+                        """, (price, title, item_id))
+
                         should_insert = False
                         if not last_entry:
                             should_insert = True
                         else:
-                            last_price = float(last_entry[0])
-                            last_recorded_at = last_entry[1]
-
                             if price != last_price:
                                 should_insert = True
                             else:
-                                # Insert if the last entry was not today (ensure at least one entry per day)
-                                # Use server time (local) for 'today' check as a simplification
+                                # Insert if the last entry was not today
                                 if last_recorded_at.date() < datetime.now().date():
                                     should_insert = True
 
@@ -191,6 +205,43 @@ def update_all_prices():
                             logger.info(f"Updated price for item {item_id} to {price} (History added)")
                         else:
                             logger.info(f"Updated price for item {item_id} to {price} (History skipped - same price same day)")
+
+                        # Notification Logic
+                        if last_price is not None and price < last_price:
+                            should_notify = False
+                            price_change = price - last_price
+                            price_change_percent = (price_change / last_price) * 100
+
+                            # Check threshold if configured
+                            if threshold_value is not None:
+                                if threshold_type == 'percent':
+                                    if abs(price_change_percent) >= float(threshold_value):
+                                        should_notify = True
+                                elif threshold_type == 'absolute':
+                                    if abs(price_change) >= float(threshold_value):
+                                        should_notify = True
+
+                            if should_notify:
+                                # Fetch user's webhook URL
+                                cur.execute("SELECT price_change_notification_webhook_url FROM user_settings WHERE user_id = %s", (user_id,))
+                                settings_row = cur.fetchone()
+                                webhook_url = settings_row[0] if settings_row else None
+
+                                if webhook_url:
+                                    try:
+                                        payload = {
+                                            "item_name": title,
+                                            "current_price": price,
+                                            "previous_price": last_price,
+                                            "price_change": round(price_change, 2),
+                                            "price_change_percent": round(price_change_percent, 2),
+                                            "url": url,
+                                            "message": f"Price drop detected for {title}!"
+                                        }
+                                        requests.post(webhook_url, json=payload, timeout=5)
+                                        logger.info(f"Notification sent for item {item_id}")
+                                    except Exception as e:
+                                        logger.error(f"Failed to send notification for item {item_id}: {e}")
 
                 except Exception as e:
                     logger.error(f"Failed to update database for item {item_id}: {e}")

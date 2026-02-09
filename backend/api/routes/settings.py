@@ -1,3 +1,4 @@
+import requests
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from backend.shared.db import get_db_cursor
@@ -14,20 +15,22 @@ def get_settings():
         with get_db_cursor() as cur:
             cur.execute(
                 """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, 
-                          discord_webhook_url, discord_notification_preference 
+                          discord_webhook_url, discord_notification_preference,
+                          price_change_notification_webhook_url
                    FROM user_settings WHERE user_id = %s""",
                 (current_user_id,)
             )
             settings_row = cur.fetchone()
 
         if settings_row:
-            email, password_encrypted, otp, webhook_url, notification_pref = settings_row
+            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
                 "amazon_otp_secret_key": otp or '',
                 "discord_webhook_url": webhook_url or '',
                 "discord_notification_preference": notification_pref or 'off',
+                "price_change_notification_webhook_url": price_webhook_url or '',
             }), 200
         else:
             # If no settings row exists, return defaults
@@ -37,6 +40,7 @@ def get_settings():
                 "amazon_otp_secret_key": '',
                 "discord_webhook_url": '',
                 "discord_notification_preference": 'off',
+                "price_change_notification_webhook_url": '',
             }), 200
     except Exception as e:
         current_app.logger.error(f"Failed to get settings: {e}", exc_info=True)
@@ -53,28 +57,31 @@ def save_user_settings():
         email = data.get('amazon_email')
         password = data.get('amazon_password')
         otp = data.get('amazon_otp_secret_key')
+        price_webhook_url = data.get('price_change_notification_webhook_url')
 
         with get_db_cursor(commit=True) as cur:
             # Logic to insert or update user settings
             if password:
                 encrypted_password = fernet.encrypt(password.encode('utf-8'))
                 cur.execute("""
-                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, price_change_notification_webhook_url)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         amazon_email = EXCLUDED.amazon_email,
                         amazon_password_encrypted = EXCLUDED.amazon_password_encrypted,
-                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key;
-                """, (current_user_id, email, encrypted_password, otp))
+                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key,
+                        price_change_notification_webhook_url = EXCLUDED.price_change_notification_webhook_url;
+                """, (current_user_id, email, encrypted_password, otp, price_webhook_url))
             else:
                 # If no password is provided, we should only be updating an existing record.
                 # Creating a new record without a password would result in an invalid state.
                 cur.execute("""
                     UPDATE user_settings SET
                         amazon_email = %s,
-                        amazon_otp_secret_key = %s
+                        amazon_otp_secret_key = %s,
+                        price_change_notification_webhook_url = %s
                     WHERE user_id = %s;
-                """, (email, otp, current_user_id))
+                """, (email, otp, price_webhook_url, current_user_id))
                 if cur.rowcount == 0:
                     # This case implies a client-side error: trying to save settings for a new user without a password.
                     return jsonify({"error": "Cannot create new settings without providing a password."}), 400
@@ -110,3 +117,23 @@ def save_admin_settings():
     except Exception as e:
         current_app.logger.error(f"Failed to save admin settings: {e}", exc_info=True)
         return jsonify({"error": "Failed to save admin settings."}), 500
+
+@settings_bp.route('/api/settings/test-webhook', methods=['POST'])
+@jwt_required()
+def test_webhook():
+    data = request.get_json()
+    webhook_url = data.get('webhook_url')
+
+    if not webhook_url:
+        return jsonify({"error": "Webhook URL is required"}), 400
+
+    try:
+        payload = {
+            "message": "This is a test notification from your Price Tracker.",
+            "test": True
+        }
+        response = requests.post(webhook_url, json=payload, timeout=5)
+        response.raise_for_status()
+        return jsonify({"message": "Test notification sent successfully!"}), 200
+    except requests.RequestException as e:
+        return jsonify({"error": f"Failed to send test notification: {str(e)}"}), 400
