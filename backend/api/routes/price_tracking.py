@@ -119,11 +119,12 @@ def get_tracked_item_details(item_id):
             item = dict(zip([desc[0] for desc in cur.description], item_row))
 
             # Get price history
+            # Aggregate to show only the last price check of each day to reduce noise
             cur.execute("""
-                SELECT price, recorded_at
+                SELECT DISTINCT ON (DATE(recorded_at)) price, recorded_at
                 FROM price_history
                 WHERE tracked_item_id = %s
-                ORDER BY recorded_at ASC
+                ORDER BY DATE(recorded_at) ASC, recorded_at DESC
             """, (item_id,))
 
             history = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
