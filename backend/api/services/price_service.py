@@ -158,12 +158,40 @@ def update_all_prices():
                             WHERE id = %s
                         """, (price, title, item_id))
 
-                        # Add to price history
+                        # Check if we should insert into price_history
                         cur.execute("""
-                            INSERT INTO price_history (tracked_item_id, price)
-                            VALUES (%s, %s)
-                        """, (item_id, price))
-                    logger.info(f"Updated price for item {item_id} to {price}")
+                            SELECT price, recorded_at
+                            FROM price_history
+                            WHERE tracked_item_id = %s
+                            ORDER BY recorded_at DESC
+                            LIMIT 1
+                        """, (item_id,))
+                        last_entry = cur.fetchone()
+
+                        should_insert = False
+                        if not last_entry:
+                            should_insert = True
+                        else:
+                            last_price = float(last_entry[0])
+                            last_recorded_at = last_entry[1]
+
+                            if price != last_price:
+                                should_insert = True
+                            else:
+                                # Insert if the last entry was not today (ensure at least one entry per day)
+                                # Use server time (local) for 'today' check as a simplification
+                                if last_recorded_at.date() < datetime.now().date():
+                                    should_insert = True
+
+                        if should_insert:
+                            cur.execute("""
+                                INSERT INTO price_history (tracked_item_id, price)
+                                VALUES (%s, %s)
+                            """, (item_id, price))
+                            logger.info(f"Updated price for item {item_id} to {price} (History added)")
+                        else:
+                            logger.info(f"Updated price for item {item_id} to {price} (History skipped - same price same day)")
+
                 except Exception as e:
                     logger.error(f"Failed to update database for item {item_id}: {e}")
             else:
