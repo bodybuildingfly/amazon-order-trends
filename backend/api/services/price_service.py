@@ -137,7 +137,7 @@ def update_all_prices():
         items = []
         with get_db_cursor() as cur:
             cur.execute("""
-                SELECT id, url, user_id, notification_threshold_type, notification_threshold_value, name
+                SELECT id, url, user_id, notification_threshold_type, notification_threshold_value, name, is_custom_name
                 FROM tracked_items
             """)
             items = cur.fetchall() # List of tuples
@@ -153,15 +153,20 @@ def update_all_prices():
             threshold_type = item_data[3]
             threshold_value = item_data[4]
             current_name = item_data[5]
+            is_custom_name = item_data[6]
 
             logger.info(f"Updating price for item {item_id} ({url})...")
             price, title, _ = get_amazon_price(url)
 
-            # If title was not found, fallback to existing name or "Unknown Product"
-            if not title and current_name:
+            if is_custom_name and current_name:
+                # If name is custom, keep the existing name
                 title = current_name
-            elif not title:
-                title = "Unknown Product"
+            else:
+                # If title was not found, fallback to existing name or "Unknown Product"
+                if not title and current_name:
+                    title = current_name
+                elif not title:
+                    title = "Unknown Product"
 
             if price is not None:
                 try:

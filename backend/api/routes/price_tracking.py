@@ -86,7 +86,7 @@ def get_tracked_items():
         with get_db_cursor() as cur:
             cur.execute("""
                 SELECT id, asin, url, name, current_price, currency, last_checked,
-                       notification_threshold_type, notification_threshold_value
+                       notification_threshold_type, notification_threshold_value, is_custom_name
                 FROM tracked_items
                 WHERE user_id = %s
                 ORDER BY created_at DESC
@@ -109,7 +109,7 @@ def get_tracked_item_details(item_id):
             # Get item details
             cur.execute("""
                 SELECT id, asin, url, name, current_price, currency, last_checked,
-                       notification_threshold_type, notification_threshold_value
+                       notification_threshold_type, notification_threshold_value, is_custom_name
                 FROM tracked_items
                 WHERE id = %s AND user_id = %s
             """, (item_id, current_user_id))
@@ -150,7 +150,8 @@ def update_tracked_item(item_id):
 
     try:
         with get_db_cursor(commit=True) as cur:
-            update_fields = ["name = %s"]
+            # Mark name as custom since it's being manually updated
+            update_fields = ["name = %s", "is_custom_name = TRUE"]
             update_params = [name.strip()]
 
             if 'notification_threshold_type' in data:
@@ -168,7 +169,7 @@ def update_tracked_item(item_id):
                 SET {', '.join(update_fields)}
                 WHERE id = %s AND user_id = %s
                 RETURNING id, asin, url, name, current_price, currency, last_checked,
-                          notification_threshold_type, notification_threshold_value
+                          notification_threshold_type, notification_threshold_value, is_custom_name
             """
 
             cur.execute(query, tuple(update_params))

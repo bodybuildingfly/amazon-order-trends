@@ -1,0 +1,1 @@
+ALTER TABLE tracked_items ADD COLUMN IF NOT EXISTS is_custom_name BOOLEAN DEFAULT FALSE;
