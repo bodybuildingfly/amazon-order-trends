@@ -199,6 +199,25 @@ const PriceTrackingPage = () => {
         }
     };
 
+    const isItemOnSale = (item) => {
+        if (!item.average_price || !item.current_price) return false;
+        if (item.notification_threshold_value === null || item.notification_threshold_value === undefined) {
+            return false;
+        }
+
+        const avg = parseFloat(item.average_price);
+        const current = parseFloat(item.current_price);
+        const threshold = parseFloat(item.notification_threshold_value);
+
+        if (item.notification_threshold_type === 'percent') {
+            const dropPercent = ((avg - current) / avg) * 100;
+            return dropPercent >= threshold;
+        } else {
+            const dropAmount = avg - current;
+            return dropAmount >= threshold;
+        }
+    };
+
     const renderChart = () => {
         if (!selectedItem || !selectedItem.history || selectedItem.history.length === 0) {
             return <p className="text-text-secondary mt-4">No price history available.</p>;
@@ -412,9 +431,14 @@ const PriceTrackingPage = () => {
                                         </div>
                                         <div className="flex items-center gap-6">
                                             <div className="text-right">
-                                                <div className="text-lg font-bold text-text-primary">
+                                                <div className={`text-lg font-bold ${isItemOnSale(item) ? 'text-success' : 'text-text-primary'}`}>
                                                     {item.currency} {item.current_price}
                                                 </div>
+                                                {isItemOnSale(item) && (
+                                                    <div className="text-sm text-text-muted line-through">
+                                                        Normal: {item.currency} {item.average_price}
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="flex gap-2">
                                                 <button

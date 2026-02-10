@@ -89,11 +89,14 @@ def get_tracked_items():
     try:
         with get_db_cursor() as cur:
             cur.execute("""
-                SELECT id, asin, url, name, current_price, currency, last_checked,
-                       notification_threshold_type, notification_threshold_value, is_custom_name
-                FROM tracked_items
-                WHERE user_id = %s
-                ORDER BY created_at DESC
+                SELECT t.id, t.asin, t.url, t.name, t.current_price, t.currency, t.last_checked,
+                       t.notification_threshold_type, t.notification_threshold_value, t.is_custom_name,
+                       ROUND(AVG(ph.price), 2) as average_price
+                FROM tracked_items t
+                LEFT JOIN price_history ph ON t.id = ph.tracked_item_id
+                WHERE t.user_id = %s
+                GROUP BY t.id
+                ORDER BY t.created_at DESC
             """, (current_user_id,))
 
             items = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
