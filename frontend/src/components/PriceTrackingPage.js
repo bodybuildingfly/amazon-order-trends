@@ -200,20 +200,20 @@ const PriceTrackingPage = () => {
     };
 
     const isItemOnSale = (item) => {
-        if (!item.average_price || !item.current_price) return false;
+        if (!item.normal_price || !item.current_price) return false;
         if (item.notification_threshold_value === null || item.notification_threshold_value === undefined) {
             return false;
         }
 
-        const avg = parseFloat(item.average_price);
+        const normal = parseFloat(item.normal_price);
         const current = parseFloat(item.current_price);
         const threshold = parseFloat(item.notification_threshold_value);
 
         if (item.notification_threshold_type === 'percent') {
-            const dropPercent = ((avg - current) / avg) * 100;
+            const dropPercent = ((normal - current) / normal) * 100;
             return dropPercent >= threshold;
         } else {
-            const dropAmount = avg - current;
+            const dropAmount = normal - current;
             return dropAmount >= threshold;
         }
     };
@@ -436,7 +436,7 @@ const PriceTrackingPage = () => {
                                                 </div>
                                                 {isItemOnSale(item) && (
                                                     <div className="text-sm text-text-muted line-through">
-                                                        Normal: {item.currency} {item.average_price}
+                                                        Normal: {item.currency} {item.normal_price}
                                                     </div>
                                                 )}
                                             </div>

@@ -91,11 +91,16 @@ def get_tracked_items():
             cur.execute("""
                 SELECT t.id, t.asin, t.url, t.name, t.current_price, t.currency, t.last_checked,
                        t.notification_threshold_type, t.notification_threshold_value, t.is_custom_name,
-                       ROUND(AVG(ph.price), 2) as average_price
+                       (
+                           SELECT price
+                           FROM price_history ph
+                           WHERE ph.tracked_item_id = t.id
+                           GROUP BY price
+                           ORDER BY COUNT(*) DESC, MIN(recorded_at) ASC
+                           LIMIT 1
+                       ) as normal_price
                 FROM tracked_items t
-                LEFT JOIN price_history ph ON t.id = ph.tracked_item_id
                 WHERE t.user_id = %s
-                GROUP BY t.id
                 ORDER BY t.created_at DESC
             """, (current_user_id,))
 
