@@ -115,6 +115,25 @@ def get_tracked_items():
 @jwt_required()
 def get_tracked_item_details(item_id):
     current_user_id = get_jwt_identity()
+    history_range = request.args.get('range', '7d')
+
+    # Define interval and bucket based on range
+    if history_range == '24h':
+        interval = '24 hours'
+        bucket_unit = 'hour'
+    elif history_range == '7d':
+        interval = '7 days'
+        bucket_unit = 'day'
+    elif history_range == '30d':
+        interval = '30 days'
+        bucket_unit = 'day'
+    elif history_range == '90d':
+        interval = '90 days'
+        bucket_unit = 'week'
+    else:
+        # Default fallback
+        interval = '7 days'
+        bucket_unit = 'day'
 
     try:
         with get_db_cursor() as cur:
@@ -133,13 +152,19 @@ def get_tracked_item_details(item_id):
             item = dict(zip([desc[0] for desc in cur.description], item_row))
 
             # Get price history
-            # Aggregate to show only the last price check of each day to reduce noise
-            cur.execute("""
-                SELECT DISTINCT ON (DATE(recorded_at)) price, recorded_at
-                FROM price_history
-                WHERE tracked_item_id = %s
-                ORDER BY DATE(recorded_at) ASC, recorded_at DESC
-            """, (item_id,))
+            # Dynamic query for bucketing
+            query = """
+                SELECT DISTINCT ON (bucket) price, recorded_at
+                FROM (
+                    SELECT price, recorded_at, date_trunc(%s, recorded_at) as bucket
+                    FROM price_history
+                    WHERE tracked_item_id = %s
+                      AND recorded_at >= NOW() - CAST(%s AS INTERVAL)
+                ) sub
+                ORDER BY bucket ASC, recorded_at DESC
+            """
+
+            cur.execute(query, (bucket_unit, item_id, interval))
 
             history = [dict(zip([desc[0] for desc in cur.description], row)) for row in cur.fetchall()]
 

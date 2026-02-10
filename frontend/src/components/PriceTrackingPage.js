@@ -36,6 +36,7 @@ const PriceTrackingPage = () => {
     const [editingName, setEditingName] = useState('');
     const [editingThresholdType, setEditingThresholdType] = useState('percent');
     const [editingThresholdValue, setEditingThresholdValue] = useState('');
+    const [historyRange, setHistoryRange] = useState('7d');
 
     // State for default notification settings
     const [addThresholdType, setAddThresholdType] = useState('percent');
@@ -133,12 +134,23 @@ const PriceTrackingPage = () => {
             return;
         }
 
+        fetchItemDetails(item.id, historyRange);
+    };
+
+    const fetchItemDetails = async (itemId, range) => {
         try {
-            const response = await apiClient.get(`/api/tracked-items/${item.id}`);
+            const response = await apiClient.get(`/api/tracked-items/${itemId}?range=${range}`);
             setSelectedItem(response.data);
         } catch (error) {
             console.error("Error fetching details:", error);
             toast.error("Failed to load item details.");
+        }
+    };
+
+    const handleRangeChange = (range) => {
+        setHistoryRange(range);
+        if (selectedItem) {
+            fetchItemDetails(selectedItem.id, range);
         }
     };
 
@@ -235,15 +247,21 @@ const PriceTrackingPage = () => {
             ]
         };
 
+        let timeUnit = 'day';
+        if (historyRange === '24h') timeUnit = 'hour';
+        if (historyRange === '90d') timeUnit = 'week';
+
         const options = {
             responsive: true,
             scales: {
                 x: {
                     type: 'time',
                     time: {
-                        unit: 'day',
+                        unit: timeUnit,
                         displayFormats: {
-                            day: 'MMM d'
+                            hour: 'HH:mm',
+                            day: 'MMM d',
+                            week: 'MMM d'
                         }
                     },
                     title: {
@@ -459,7 +477,24 @@ const PriceTrackingPage = () => {
 
                                     {selectedItem?.id === item.id && (
                                         <div className="mt-4 pt-4 border-t border-border-color">
-                                            <h3 className="text-lg font-semibold mb-2 text-text-primary">Price History</h3>
+                                            <div className="flex justify-between items-center mb-4">
+                                                <h3 className="text-lg font-semibold text-text-primary">Price History</h3>
+                                                <div className="flex gap-2 text-sm">
+                                                    {['24h', '7d', '30d', '90d'].map((range) => (
+                                                        <button
+                                                            key={range}
+                                                            onClick={() => handleRangeChange(range)}
+                                                            className={`px-3 py-1 rounded border transition-colors ${
+                                                                historyRange === range
+                                                                    ? 'bg-primary text-white border-primary'
+                                                                    : 'text-text-secondary border-border-color hover:border-primary hover:text-primary'
+                                                            }`}
+                                                        >
+                                                            {range.toUpperCase()}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
                                             {renderChart()}
                                         </div>
                                     )}
