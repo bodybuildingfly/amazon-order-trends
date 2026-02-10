@@ -89,5 +89,51 @@ class TestPriceTrackingAPI(unittest.TestCase):
         )
          self.assertEqual(response.status_code, 400)
 
+    @patch('backend.api.routes.price_tracking.get_db_cursor')
+    def test_get_tracked_items_includes_average(self, mock_get_db_cursor):
+        # Setup mock cursor
+        mock_cursor = MagicMock()
+        mock_get_db_cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Mock the SELECT query returning one item with average_price
+        # id, asin, url, name, current_price, currency, last_checked, notification_threshold_type, notification_threshold_value, is_custom_name, average_price
+        mock_cursor.fetchall.return_value = [
+            (
+                1, "ASIN123", "http://url.com", "Product Name", 100.0, "USD", "2023-01-01T00:00:00",
+                "percent", 10, False, 120.0
+            )
+        ]
+
+        # We need description for dict conversion
+        mock_cursor.description = [
+            ('id',), ('asin',), ('url',), ('name',), ('current_price',), ('currency',),
+            ('last_checked',), ('notification_threshold_type',), ('notification_threshold_value',),
+            ('is_custom_name',), ('average_price',)
+        ]
+
+        # We need a valid JWT token
+        with self.app.app_context():
+            token = create_access_token(identity='1')
+            headers = {'Authorization': f'Bearer {token}'}
+
+        # Perform GET request
+        response = self.client.get(
+            '/api/tracked-items',
+            headers=headers
+        )
+
+        # Assertions
+        self.assertEqual(response.status_code, 200)
+        data = response.json
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['average_price'], 120.0)
+
+        # Verify SQL execution
+        mock_cursor.execute.assert_called()
+        call_args = mock_cursor.execute.call_args
+        sql = call_args[0][0]
+        self.assertIn("ROUND(AVG(ph.price), 2) as average_price", sql)
+        self.assertIn("LEFT JOIN price_history ph", sql)
+
 if __name__ == '__main__':
     unittest.main()
