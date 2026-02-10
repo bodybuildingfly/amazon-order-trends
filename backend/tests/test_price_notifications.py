@@ -33,7 +33,7 @@ class TestPriceNotifications(unittest.TestCase):
         ]
 
         # Mock New Price: 80.0 (20% drop, > 10% threshold)
-        mock_get_price.return_value = (80.0, "Test Product", "USD")
+        mock_get_price.return_value = (80.0, "Test Product", "$")
 
         update_all_prices()
 
@@ -63,7 +63,7 @@ class TestPriceNotifications(unittest.TestCase):
         ]
 
         # New Price: 95.0 (5% drop, < 10% threshold)
-        mock_get_price.return_value = (95.0, "Test Product", "USD")
+        mock_get_price.return_value = (95.0, "Test Product", "$")
 
         update_all_prices()
 
@@ -89,7 +89,7 @@ class TestPriceNotifications(unittest.TestCase):
         ]
 
         # New Price: 90.0 ($10 drop, > $5 threshold)
-        mock_get_price.return_value = (90.0, "Test Product", "USD")
+        mock_get_price.return_value = (90.0, "Test Product", "$")
 
         update_all_prices()
 
@@ -116,7 +116,7 @@ class TestPriceNotifications(unittest.TestCase):
         ]
 
         # New Price: 80.0
-        mock_get_price.return_value = (80.0, "Test Product", "USD")
+        mock_get_price.return_value = (80.0, "Test Product", "$")
 
         update_all_prices()
 

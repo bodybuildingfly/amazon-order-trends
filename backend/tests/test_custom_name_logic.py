@@ -26,7 +26,7 @@ class TestCustomNameLogic(unittest.TestCase):
         ]
 
         # Scraper returns: (price, title, currency)
-        mock_get_price.return_value = (100.0, "Amazon Title", "USD")
+        mock_get_price.return_value = (100.0, "Amazon Title", "$")
 
         # Mock last entry check (price same, no history update needed)
         mock_cursor.fetchone.return_value = (100.0, datetime.now())
@@ -63,7 +63,7 @@ class TestCustomNameLogic(unittest.TestCase):
             [(1, 'http://url.com/1', 'user1', 'percent', 10, 'Old Name', False)]
         ]
 
-        mock_get_price.return_value = (100.0, "New Amazon Title", "USD")
+        mock_get_price.return_value = (100.0, "New Amazon Title", "$")
         mock_cursor.fetchone.return_value = (100.0, datetime.now())
 
         update_all_prices()

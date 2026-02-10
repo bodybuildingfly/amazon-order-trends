@@ -29,7 +29,7 @@ class TestPriceTrackingLogic(unittest.TestCase):
         mock_cursor.fetchone.return_value = (10.0, datetime.now() - timedelta(hours=1))
 
         # Mock New Price
-        mock_get_price.return_value = (20.0, "Test Product", "USD")
+        mock_get_price.return_value = (20.0, "Test Product", "$")
 
         update_all_prices()
 
@@ -51,7 +51,7 @@ class TestPriceTrackingLogic(unittest.TestCase):
         # Last price same as new, recorded just now (same day)
         mock_cursor.fetchone.return_value = (10.0, datetime.now())
 
-        mock_get_price.return_value = (10.0, "Test Product", "USD")
+        mock_get_price.return_value = (10.0, "Test Product", "$")
 
         update_all_prices()
 
@@ -75,7 +75,7 @@ class TestPriceTrackingLogic(unittest.TestCase):
         # Last price same, recorded yesterday (different day)
         mock_cursor.fetchone.return_value = (10.0, datetime.now() - timedelta(days=1))
 
-        mock_get_price.return_value = (10.0, "Test Product", "USD")
+        mock_get_price.return_value = (10.0, "Test Product", "$")
 
         update_all_prices()
 

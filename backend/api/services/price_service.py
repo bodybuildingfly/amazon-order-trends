@@ -97,7 +97,7 @@ def get_amazon_price(url):
             price_text = price_element.get_text(strip=True)
 
         price = None
-        currency = 'USD' # Default
+        currency = '$' # Default
 
         if price_text:
             # Remove currency symbol and parse float

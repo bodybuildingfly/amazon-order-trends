@@ -83,7 +83,7 @@ class TestDefaultNotifications(unittest.TestCase):
     @patch('backend.api.routes.price_tracking.get_amazon_price')
     def test_add_tracked_item_with_defaults(self, mock_get_amazon_price, mock_get_db_cursor):
         # Mock Amazon Price
-        mock_get_amazon_price.return_value = (99.99, "Test Product", "USD")
+        mock_get_amazon_price.return_value = (99.99, "Test Product", "$")
 
         # Mock DB Cursor
         mock_cursor = MagicMock()
@@ -93,7 +93,7 @@ class TestDefaultNotifications(unittest.TestCase):
         # Then fetchone for RETURNING clause (return new item)
         mock_cursor.fetchone.side_effect = [
             None, # Check existing
-            (1, "Test Product", 99.99, "USD") # RETURNING clause
+            (1, "Test Product", 99.99, "$") # RETURNING clause
         ]
 
         with self.app.app_context():

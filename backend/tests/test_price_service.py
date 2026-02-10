@@ -29,7 +29,7 @@ class TestPriceService(unittest.TestCase):
         price, title, currency = get_amazon_price("http://example.com")
         self.assertEqual(price, 19.99)
         self.assertEqual(title, "Test Product")
-        self.assertEqual(currency, "USD")
+        self.assertEqual(currency, "$")
 
     @patch('backend.api.services.price_service.UserAgent')
     @patch('requests.get')

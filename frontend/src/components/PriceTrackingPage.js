@@ -432,11 +432,11 @@ const PriceTrackingPage = () => {
                                         <div className="flex items-center gap-6">
                                             <div className="text-right">
                                                 <div className={`text-lg font-bold ${isItemOnSale(item) ? 'text-success' : 'text-text-primary'}`}>
-                                                    {item.currency} {item.current_price}
+                                                    {item.currency}{item.current_price}
                                                 </div>
                                                 {isItemOnSale(item) && (
                                                     <div className="text-sm text-text-muted line-through">
-                                                        Normal: {item.currency} {item.normal_price}
+                                                        Normal: {item.currency}{item.normal_price}
                                                     </div>
                                                 )}
                                             </div>
