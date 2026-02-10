@@ -23,7 +23,7 @@ from backend.api.routes.price_tracking import price_tracking_bp
 class TestPriceTrackingAPI(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self.app.config['JWT_SECRET_KEY'] = 'test-secret'
+        self.app.config['JWT_SECRET_KEY'] = 'test-secret-long-enough-for-jwt-security-check'
         self.jwt = JWTManager(self.app)
         self.app.register_blueprint(price_tracking_bp)
         self.client = self.app.test_client()
