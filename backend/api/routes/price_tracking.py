@@ -19,6 +19,8 @@ def add_tracked_item():
     current_user_id = get_jwt_identity()
     data = request.get_json()
     url = data.get('url')
+    notification_threshold_type = data.get('notification_threshold_type', 'percent')
+    notification_threshold_value = data.get('notification_threshold_value')
 
     if not url:
         return jsonify({"error": "URL is required"}), 400
@@ -43,10 +45,10 @@ def add_tracked_item():
     try:
         with get_db_cursor(commit=True) as cur:
             cur.execute("""
-                INSERT INTO tracked_items (user_id, asin, url, name, current_price, currency, last_checked)
-                VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO tracked_items (user_id, asin, url, name, current_price, currency, last_checked, notification_threshold_type, notification_threshold_value)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s)
                 RETURNING id, name, current_price, currency
-            """, (current_user_id, asin, url, title, price, currency))
+            """, (current_user_id, asin, url, title, price, currency, notification_threshold_type, notification_threshold_value))
 
             new_item_row = cur.fetchone()
             # Convert row to dict for easy access or just use indices
@@ -69,6 +71,8 @@ def add_tracked_item():
             "asin": asin,
             "current_price": current_price,
             "currency": currency_val,
+            "notification_threshold_type": notification_threshold_type,
+            "notification_threshold_value": notification_threshold_value,
             "last_checked": datetime.now().isoformat(),
             "message": "Item added successfully"
         }), 201

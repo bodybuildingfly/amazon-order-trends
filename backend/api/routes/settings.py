@@ -16,14 +16,15 @@ def get_settings():
             cur.execute(
                 """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, 
                           discord_webhook_url, discord_notification_preference,
-                          price_change_notification_webhook_url
+                          price_change_notification_webhook_url,
+                          default_notification_threshold_type, default_notification_threshold_value
                    FROM user_settings WHERE user_id = %s""",
                 (current_user_id,)
             )
             settings_row = cur.fetchone()
 
         if settings_row:
-            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url = settings_row
+            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url, def_thresh_type, def_thresh_val = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
@@ -31,6 +32,8 @@ def get_settings():
                 "discord_webhook_url": webhook_url or '',
                 "discord_notification_preference": notification_pref or 'off',
                 "price_change_notification_webhook_url": price_webhook_url or '',
+                "default_notification_threshold_type": def_thresh_type or 'percent',
+                "default_notification_threshold_value": def_thresh_val
             }), 200
         else:
             # If no settings row exists, return defaults
@@ -41,6 +44,8 @@ def get_settings():
                 "discord_webhook_url": '',
                 "discord_notification_preference": 'off',
                 "price_change_notification_webhook_url": '',
+                "default_notification_threshold_type": 'percent',
+                "default_notification_threshold_value": None
             }), 200
     except Exception as e:
         current_app.logger.error(f"Failed to get settings: {e}", exc_info=True)
@@ -54,37 +59,56 @@ def save_user_settings():
 
     try:
         fernet = get_fernet()
-        email = data.get('amazon_email')
-        password = data.get('amazon_password')
-        otp = data.get('amazon_otp_secret_key')
-        price_webhook_url = data.get('price_change_notification_webhook_url')
 
-        with get_db_cursor(commit=True) as cur:
-            # Logic to insert or update user settings
+        # Map request keys to database columns
+        # Tuples of (json_key, db_column)
+        fields_map = [
+            ('amazon_email', 'amazon_email'),
+            ('amazon_otp_secret_key', 'amazon_otp_secret_key'),
+            ('price_change_notification_webhook_url', 'price_change_notification_webhook_url'),
+            ('default_notification_threshold_type', 'default_notification_threshold_type'),
+            ('default_notification_threshold_value', 'default_notification_threshold_value')
+        ]
+
+        columns = ['user_id']
+        values = [current_user_id]
+
+        # Handle password specially
+        if 'amazon_password' in data:
+            password = data['amazon_password']
             if password:
                 encrypted_password = fernet.encrypt(password.encode('utf-8'))
-                cur.execute("""
-                    INSERT INTO user_settings (user_id, amazon_email, amazon_password_encrypted, amazon_otp_secret_key, price_change_notification_webhook_url)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        amazon_email = EXCLUDED.amazon_email,
-                        amazon_password_encrypted = EXCLUDED.amazon_password_encrypted,
-                        amazon_otp_secret_key = EXCLUDED.amazon_otp_secret_key,
-                        price_change_notification_webhook_url = EXCLUDED.price_change_notification_webhook_url;
-                """, (current_user_id, email, encrypted_password, otp, price_webhook_url))
-            else:
-                # If no password is provided, we should only be updating an existing record.
-                # Creating a new record without a password would result in an invalid state.
-                cur.execute("""
-                    UPDATE user_settings SET
-                        amazon_email = %s,
-                        amazon_otp_secret_key = %s,
-                        price_change_notification_webhook_url = %s
-                    WHERE user_id = %s;
-                """, (email, otp, price_webhook_url, current_user_id))
-                if cur.rowcount == 0:
-                    # This case implies a client-side error: trying to save settings for a new user without a password.
-                    return jsonify({"error": "Cannot create new settings without providing a password."}), 400
+                columns.append('amazon_password_encrypted')
+                values.append(encrypted_password)
+            # If password is provided as empty/null, we might ignore it or clear it?
+            # Existing logic implies we update it if provided.
+
+        for json_key, db_col in fields_map:
+            if json_key in data:
+                columns.append(db_col)
+                values.append(data[json_key])
+
+        if len(columns) == 1:
+            # No fields to update
+            return jsonify({"message": "No changes detected."}), 200
+
+        # Construct Dynamic SQL
+        placeholders = ', '.join(['%s'] * len(columns))
+        col_names = ', '.join(columns)
+
+        # Exclude user_id from SET clause
+        update_assignments = [f"{col} = EXCLUDED.{col}" for col in columns if col != 'user_id']
+        update_clause = ', '.join(update_assignments)
+
+        query = f"""
+            INSERT INTO user_settings ({col_names})
+            VALUES ({placeholders})
+            ON CONFLICT (user_id) DO UPDATE SET
+            {update_clause};
+        """
+
+        with get_db_cursor(commit=True) as cur:
+            cur.execute(query, tuple(values))
 
         return jsonify({"message": "User settings saved successfully."}), 200
     except Exception as e:
@@ -109,6 +133,12 @@ def save_admin_settings():
                 WHERE user_id = %s;
             """, (discord_webhook_url, discord_notification_preference, current_user_id))
             if cur.rowcount == 0:
+                # If admin tries to save global settings but doesn't have a user_settings row yet
+                # We could insert one, but existing logic returned 404.
+                # Given we now have a dynamic insert in user settings, we could suggest using that,
+                # but admin settings are separate in UI.
+                # Let's keep existing behavior or use INSERT ON CONFLICT here too?
+                # The prompt is only about user settings defaults. Let's leave admin settings as is.
                 return jsonify({
                     "error": "User settings not found. Please configure your main user settings before saving admin-specific settings."
                 }), 404
