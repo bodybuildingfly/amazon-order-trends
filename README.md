@@ -7,6 +7,7 @@ This project is a full-stack web application designed to help you track and anal
 - **Interactive Dashboard**: Get a quick overview of your total spending and number of orders. Visualize your monthly spending trends with an interactive chart.
 - **Detailed Order History**: View all your Amazon orders in a comprehensive table. Search, sort, and filter your orders to easily find what you're looking for.
 - **Repeat Order Insights**: Identify items you buy frequently and see how often you reorder them.
+- **Price Tracking**: Track price changes and configure notifications for price changes per item.
 - **Secure Authentication**: The application uses a secure authentication system to protect your data.
 - **User Management (Admin)**: Admins can manage users and their roles.
 
