@@ -51,7 +51,7 @@ def create_app(config_name=None):
     # Add scheduled job for price tracking
     from backend.api.services.price_service import update_all_prices
     if not scheduler.get_job('update_prices'):
-         scheduler.add_job(id='update_prices', func=update_all_prices, trigger='interval', hours=1, replace_existing=True)
+         scheduler.add_job(id='update_prices', func=update_all_prices, trigger='cron', hour='*', minute=0, replace_existing=True)
 
     # --- Logging ---
     # Configure Flask's built-in logger to stream to stdout
