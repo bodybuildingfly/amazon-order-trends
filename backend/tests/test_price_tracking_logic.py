@@ -1,42 +1,6 @@
 import sys
-from unittest.mock import MagicMock
-
-# Mock ALL external dependencies that might be imported by backend.api.__init__
-# This is necessary because importing price_service triggers backend.api.__init__
-# which imports flask and other dependencies that might not be present in the test environment.
-sys.modules['flask'] = MagicMock()
-sys.modules['flask_cors'] = MagicMock()
-sys.modules['flask_jwt_extended'] = MagicMock()
-sys.modules['flask_apscheduler'] = MagicMock()
-sys.modules['werkzeug.security'] = MagicMock()
-sys.modules['gevent'] = MagicMock()
-sys.modules['psycogreen'] = MagicMock()
-sys.modules['psycogreen.gevent'] = MagicMock()
-sys.modules['cryptography'] = MagicMock()
-sys.modules['cryptography.fernet'] = MagicMock()
-sys.modules['fcntl'] = MagicMock()
-
-# Mock dependencies of price_service
-sys.modules['requests'] = MagicMock()
-sys.modules['bs4'] = MagicMock()
-sys.modules['fake_useragent'] = MagicMock()
-sys.modules['lxml'] = MagicMock()
-sys.modules['backend.shared.db'] = MagicMock()
-sys.modules['backend.api.config'] = MagicMock()
-sys.modules['backend.api.extensions'] = MagicMock()
-sys.modules['backend.api.helpers'] = MagicMock()
-sys.modules['backend.api.helpers.encryption'] = MagicMock()
-sys.modules['backend.api.routes'] = MagicMock()
-sys.modules['backend.api.routes.auth'] = MagicMock()
-sys.modules['backend.api.routes.users'] = MagicMock()
-sys.modules['backend.api.routes.settings'] = MagicMock()
-sys.modules['backend.api.routes.items'] = MagicMock()
-sys.modules['backend.api.routes.ingestion'] = MagicMock()
-sys.modules['backend.api.routes.dashboard'] = MagicMock()
-sys.modules['backend.api.routes.price_tracking'] = MagicMock()
-
 import unittest
-from unittest.mock import patch, call
+from unittest.mock import patch, call, MagicMock
 from datetime import datetime, timedelta
 import os
 

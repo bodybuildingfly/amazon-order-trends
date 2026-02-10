@@ -245,7 +245,7 @@ const UserSettingsPage = () => {
                     <div className="pt-4 border-t border-border-color">
                         <h3 className="text-lg font-semibold text-text-primary mb-4">Notifications</h3>
                         <div>
-                            <label htmlFor="price_change_notification_webhook_url" className="form-label">Price Change Webhook URL</label>
+                            <label htmlFor="price_change_notification_webhook_url" className="form-label">Discord Price Alert Webhook URL</label>
                             <div className="flex gap-2">
                                 <input
                                     type="url"
@@ -254,7 +254,7 @@ const UserSettingsPage = () => {
                                     value={formData.price_change_notification_webhook_url}
                                     onChange={handleFormChange}
                                     className="form-input flex-grow"
-                                    placeholder="https://example.com/webhook"
+                                    placeholder="https://discord.com/api/webhooks/..."
                                 />
                                 <button
                                     type="button"
@@ -265,7 +265,7 @@ const UserSettingsPage = () => {
                                 </button>
                             </div>
                             <p className="text-xs text-text-secondary mt-1">
-                                Receive notifications when tracked items drop in price.
+                                Receive Discord notifications when tracked items drop in price.
                             </p>
                         </div>
                     </div>

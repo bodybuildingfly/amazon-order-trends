@@ -127,13 +127,17 @@ def test_webhook():
     if not webhook_url:
         return jsonify({"error": "Webhook URL is required"}), 400
 
-    try:
-        payload = {
-            "message": "This is a test notification from your Price Tracker.",
-            "test": True
-        }
-        response = requests.post(webhook_url, json=payload, timeout=5)
-        response.raise_for_status()
+    from backend.api.services.notification_service import send_price_drop_notification
+
+    success = send_price_drop_notification(
+        webhook_url,
+        item_name="Test Product - Premium Widget",
+        current_price=19.99,
+        previous_price=24.99,
+        url="https://www.amazon.com/"
+    )
+
+    if success:
         return jsonify({"message": "Test notification sent successfully!"}), 200
-    except requests.RequestException as e:
-        return jsonify({"error": f"Failed to send test notification: {str(e)}"}), 400
+    else:
+        return jsonify({"error": "Failed to send test notification. Check server logs for details."}), 400
