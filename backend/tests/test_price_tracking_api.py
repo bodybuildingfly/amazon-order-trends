@@ -40,7 +40,7 @@ class TestPriceTrackingAPI(unittest.TestCase):
             1,
             "New Name",
             100.0,
-            "USD",
+            "$",
             "ASIN123",
             "http://url.com",
             "2023-01-01T00:00:00"
@@ -99,7 +99,7 @@ class TestPriceTrackingAPI(unittest.TestCase):
         # id, asin, url, name, current_price, currency, last_checked, notification_threshold_type, notification_threshold_value, is_custom_name, normal_price
         mock_cursor.fetchall.return_value = [
             (
-                1, "ASIN123", "http://url.com", "Product Name", 100.0, "USD", "2023-01-01T00:00:00",
+                1, "ASIN123", "http://url.com", "Product Name", 100.0, "$", "2023-01-01T00:00:00",
                 "percent", 10, False, 120.0
             )
         ]

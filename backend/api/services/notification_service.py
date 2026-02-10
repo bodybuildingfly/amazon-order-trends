@@ -38,7 +38,7 @@ def send_discord_notification(webhook_url, title, description, color, log_messag
             error_message += f"\nResponse Body: {e.response.text}"
         logger.error(error_message)
 
-def send_price_drop_notification(webhook_url, item_name, current_price, previous_price, url, currency="USD"):
+def send_price_drop_notification(webhook_url, item_name, current_price, previous_price, url, currency="$"):
     """
     Sends a price drop notification to a Discord webhook.
     """
@@ -55,17 +55,17 @@ def send_price_drop_notification(webhook_url, item_name, current_price, previous
         "fields": [
             {
                 "name": "Previous Price",
-                "value": f"{currency} {previous_price:.2f}",
+                "value": f"{currency}{previous_price:.2f}",
                 "inline": True
             },
             {
                 "name": "Current Price",
-                "value": f"{currency} {current_price:.2f}",
+                "value": f"{currency}{current_price:.2f}",
                 "inline": True
             },
             {
                 "name": "Change",
-                "value": f"{currency} {price_change:.2f} ({price_change_percent:.2f}%)",
+                "value": f"{currency}{price_change:.2f} ({price_change_percent:.2f}%)",
                 "inline": True
             }
         ],
