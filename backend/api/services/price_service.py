@@ -192,25 +192,12 @@ def update_all_prices():
                             WHERE id = %s
                         """, (price, title, item_id))
 
-                        should_insert = False
-                        if not last_entry:
-                            should_insert = True
-                        else:
-                            if price != last_price:
-                                should_insert = True
-                            else:
-                                # Insert if the last entry was not today
-                                if last_recorded_at.date() < datetime.now().date():
-                                    should_insert = True
-
-                        if should_insert:
-                            cur.execute("""
-                                INSERT INTO price_history (tracked_item_id, price)
-                                VALUES (%s, %s)
-                            """, (item_id, price))
-                            logger.info(f"Updated price for item {item_id} to {price} (History added)")
-                        else:
-                            logger.info(f"Updated price for item {item_id} to {price} (History skipped - same price same day)")
+                        # Always insert into history to ensure hourly tracking
+                        cur.execute("""
+                            INSERT INTO price_history (tracked_item_id, price)
+                            VALUES (%s, %s)
+                        """, (item_id, price))
+                        logger.info(f"Updated price for item {item_id} to {price} (History added)")
 
                         # Notification Logic
                         if last_price is not None and price < last_price:
@@ -260,3 +247,37 @@ def update_all_prices():
 
     except Exception as e:
         logger.error(f"Error during price update job: {e}")
+
+def cleanup_price_history():
+    """
+    Cleans up old price history entries.
+    Keeps only one entry per day for records older than 24 hours.
+    This prevents the database from growing indefinitely with hourly data.
+    """
+    logger.info("Starting scheduled price history cleanup...")
+    try:
+        with get_db_cursor(commit=True) as cur:
+            # Delete records that are:
+            # 1. Older than 24 hours
+            # 2. Not the first record of that day for that item
+            cur.execute("""
+                DELETE FROM price_history
+                WHERE id IN (
+                    SELECT id
+                    FROM (
+                        SELECT
+                            id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY tracked_item_id, date_trunc('day', recorded_at)
+                                ORDER BY recorded_at ASC
+                            ) as rn
+                        FROM price_history
+                        WHERE recorded_at < NOW() - INTERVAL '24 hours'
+                    ) sub
+                    WHERE rn > 1
+                );
+            """)
+            deleted_count = cur.rowcount
+            logger.info(f"Cleanup finished. Deleted {deleted_count} old price history records.")
+    except Exception as e:
+        logger.error(f"Error during price history cleanup: {e}")
