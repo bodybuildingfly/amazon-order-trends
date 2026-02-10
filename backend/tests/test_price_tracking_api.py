@@ -8,8 +8,6 @@ sys.modules['amazonorders.orders'] = MagicMock()
 sys.modules['amazonorders.transactions'] = MagicMock()
 sys.modules['amazonorders.exception'] = MagicMock()
 
-# Mocking price_service to avoid its imports
-sys.modules['backend.api.services.price_service'] = MagicMock()
 
 import unittest
 from flask import Flask

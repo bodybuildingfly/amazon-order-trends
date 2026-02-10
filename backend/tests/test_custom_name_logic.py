@@ -7,24 +7,6 @@ import os
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-# Mock dependencies
-sys.modules['flask'] = MagicMock()
-sys.modules['flask_cors'] = MagicMock()
-sys.modules['flask_jwt_extended'] = MagicMock()
-sys.modules['flask_apscheduler'] = MagicMock()
-sys.modules['werkzeug.security'] = MagicMock()
-sys.modules['gevent'] = MagicMock()
-sys.modules['psycogreen'] = MagicMock()
-sys.modules['psycogreen.gevent'] = MagicMock()
-sys.modules['cryptography'] = MagicMock()
-sys.modules['cryptography.fernet'] = MagicMock()
-sys.modules['fcntl'] = MagicMock()
-sys.modules['requests'] = MagicMock()
-sys.modules['bs4'] = MagicMock()
-sys.modules['fake_useragent'] = MagicMock()
-sys.modules['lxml'] = MagicMock()
-sys.modules['backend.shared.db'] = MagicMock()
-
 # Import the function to test
 from backend.api.services.price_service import update_all_prices
 

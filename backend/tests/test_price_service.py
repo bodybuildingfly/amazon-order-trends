@@ -9,8 +9,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 from backend.api.services.price_service import get_amazon_price
 
 class TestPriceService(unittest.TestCase):
-    @patch('backend.api.services.price_service.requests.get')
-    def test_get_amazon_price_success(self, mock_get):
+    @patch('backend.api.services.price_service.UserAgent')
+    @patch('requests.get')
+    def test_get_amazon_price_success(self, mock_get, mock_ua):
         # Mock HTML content
         html_content = """
         <html>
@@ -30,8 +31,9 @@ class TestPriceService(unittest.TestCase):
         self.assertEqual(title, "Test Product")
         self.assertEqual(currency, "USD")
 
-    @patch('backend.api.services.price_service.requests.get')
-    def test_get_amazon_price_fraction(self, mock_get):
+    @patch('backend.api.services.price_service.UserAgent')
+    @patch('requests.get')
+    def test_get_amazon_price_fraction(self, mock_get, mock_ua):
         # Mock HTML content with whole/fraction
         html_content = """
         <html>
@@ -49,8 +51,9 @@ class TestPriceService(unittest.TestCase):
         price, title, currency = get_amazon_price("http://example.com")
         self.assertEqual(price, 1234.56)
 
-    @patch('backend.api.services.price_service.requests.get')
-    def test_get_amazon_price_meta_fallback(self, mock_get):
+    @patch('backend.api.services.price_service.UserAgent')
+    @patch('requests.get')
+    def test_get_amazon_price_meta_fallback(self, mock_get, mock_ua):
         # Mock HTML content with meta title
         html_content = """
         <html>
@@ -67,8 +70,9 @@ class TestPriceService(unittest.TestCase):
         self.assertEqual(title, "Meta Title Product")
         self.assertEqual(price, 10.00)
 
-    @patch('backend.api.services.price_service.requests.get')
-    def test_get_amazon_price_captcha(self, mock_get):
+    @patch('backend.api.services.price_service.UserAgent')
+    @patch('requests.get')
+    def test_get_amazon_price_captcha(self, mock_get, mock_ua):
         # Mock CAPTCHA page
         html_content = """
         <html>
@@ -84,8 +88,9 @@ class TestPriceService(unittest.TestCase):
         self.assertIsNone(price)
         self.assertIsNone(title)
 
-    @patch('backend.api.services.price_service.requests.get')
-    def test_get_amazon_price_fail(self, mock_get):
+    @patch('backend.api.services.price_service.UserAgent')
+    @patch('requests.get')
+    def test_get_amazon_price_fail(self, mock_get, mock_ua):
         mock_get.side_effect = Exception("Network Error")
         price, title, currency = get_amazon_price("http://example.com")
         self.assertIsNone(price)

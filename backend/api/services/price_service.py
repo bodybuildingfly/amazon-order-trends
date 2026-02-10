@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from datetime import datetime
 from backend.shared.db import get_db_cursor
+from backend.api.services.notification_service import send_price_drop_notification
 import re
 
 logger = logging.getLogger(__name__)
@@ -233,20 +234,13 @@ def update_all_prices():
                                 webhook_url = settings_row[0] if settings_row else None
 
                                 if webhook_url:
-                                    try:
-                                        payload = {
-                                            "item_name": title,
-                                            "current_price": price,
-                                            "previous_price": last_price,
-                                            "price_change": round(price_change, 2),
-                                            "price_change_percent": round(price_change_percent, 2),
-                                            "url": url,
-                                            "message": f"Price drop detected for {title}!"
-                                        }
-                                        requests.post(webhook_url, json=payload, timeout=5)
-                                        logger.info(f"Notification sent for item {item_id}")
-                                    except Exception as e:
-                                        logger.error(f"Failed to send notification for item {item_id}: {e}")
+                                    send_price_drop_notification(
+                                        webhook_url,
+                                        item_name=title,
+                                        current_price=price,
+                                        previous_price=last_price,
+                                        url=url
+                                    )
 
                 except Exception as e:
                     logger.error(f"Failed to update database for item {item_id}: {e}")
