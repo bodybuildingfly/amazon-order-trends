@@ -56,7 +56,7 @@ class TestPriceTrackingLogic(unittest.TestCase):
 
         # Mock Fetch Items
         mock_cursor.fetchall.side_effect = [
-            [('item_1', 'http://example.com/1')]
+            [('item_1', 'http://example.com/1', 'user1', None, None, 'Test Item', False)]
         ]
 
         # Mock Fetch Last Price (Logic I added)
@@ -81,7 +81,7 @@ class TestPriceTrackingLogic(unittest.TestCase):
         mock_get_db_cursor.return_value.__enter__.return_value = mock_cursor
 
         mock_cursor.fetchall.side_effect = [
-            [('item_1', 'http://example.com/1')]
+            [('item_1', 'http://example.com/1', 'user1', None, None, 'Test Item', False)]
         ]
 
         # Last price same as new, recorded just now (same day)
@@ -105,7 +105,7 @@ class TestPriceTrackingLogic(unittest.TestCase):
         mock_get_db_cursor.return_value.__enter__.return_value = mock_cursor
 
         mock_cursor.fetchall.side_effect = [
-            [('item_1', 'http://example.com/1')]
+            [('item_1', 'http://example.com/1', 'user1', None, None, 'Test Item', False)]
         ]
 
         # Last price same, recorded yesterday (different day)
@@ -127,7 +127,7 @@ class TestPriceTrackingLogic(unittest.TestCase):
         mock_get_db_cursor.return_value.__enter__.return_value = mock_cursor
 
         mock_cursor.fetchall.side_effect = [
-            [('item_1', 'http://example.com/1')]
+            [('item_1', 'http://example.com/1', 'user1', None, None, 'Test Item', False)]
         ]
 
         # Price fetch fails (returns None)
