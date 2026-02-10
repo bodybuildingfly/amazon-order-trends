@@ -3,8 +3,8 @@ from datetime import timedelta
 
 class Config:
     """Base configuration."""
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'default-secret-key-for-dev')
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'default-secret-key-for-dev')
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'default-secret-key-for-dev-and-testing-purposes-only'
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'default-secret-key-for-dev-and-testing-purposes-only'
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=1)
     JWT_TOKEN_LOCATION = ["headers", "query_string"]
     JWT_QUERY_STRING_NAME = "token"
