@@ -37,8 +37,13 @@ const PriceTrackingPage = () => {
     const [editingThresholdType, setEditingThresholdType] = useState('percent');
     const [editingThresholdValue, setEditingThresholdValue] = useState('');
 
+    // State for default notification settings
+    const [addThresholdType, setAddThresholdType] = useState('percent');
+    const [addThresholdValue, setAddThresholdValue] = useState('');
+
     useEffect(() => {
         fetchItems();
+        fetchSettings();
     }, []);
 
     const fetchItems = async () => {
@@ -54,17 +59,52 @@ const PriceTrackingPage = () => {
         }
     };
 
+    const fetchSettings = async () => {
+        try {
+            const response = await apiClient.get('/api/settings');
+            if (response.data.default_notification_threshold_type) {
+                setAddThresholdType(response.data.default_notification_threshold_type);
+            }
+            // Check for null explicitly, as value can be 0 (though unlikely for a threshold)
+            if (response.data.default_notification_threshold_value !== null && response.data.default_notification_threshold_value !== undefined) {
+                setAddThresholdValue(response.data.default_notification_threshold_value);
+            }
+        } catch (error) {
+            console.error("Error fetching settings:", error);
+            // Non-critical error, so maybe just log it
+        }
+    };
+
     const handleAddItem = async (e) => {
         e.preventDefault();
         if (!newItemUrl) return;
 
         setAdding(true);
         try {
-            const response = await apiClient.post('/api/tracked-items', { url: newItemUrl });
+            const payload = {
+                url: newItemUrl,
+                notification_threshold_type: addThresholdType,
+                notification_threshold_value: addThresholdValue ? parseFloat(addThresholdValue) : null
+            };
+
+            const response = await apiClient.post('/api/tracked-items', payload);
             // Add the new item to the list.
             setItems([response.data, ...items]);
             setNewItemUrl('');
             toast.success("Item added successfully!");
+
+            // Update user defaults in background
+            try {
+                await apiClient.post('/api/settings/user', {
+                    default_notification_threshold_type: addThresholdType,
+                    default_notification_threshold_value: addThresholdValue ? parseFloat(addThresholdValue) : null
+                });
+            } catch (settingsError) {
+                console.error("Failed to update default settings:", settingsError);
+                // We don't necessarily want to fail the item addition if saving settings fails,
+                // but maybe warn? For now silent fail or console log is okay.
+            }
+
         } catch (error) {
             console.error("Error adding item:", error);
             const msg = error.response?.data?.error || "Failed to add item.";
@@ -235,22 +275,47 @@ const PriceTrackingPage = () => {
             {/* Add Item Form */}
             <div className="bg-surface p-6 rounded-lg shadow mb-8 border border-border-color">
                 <h2 className="text-xl font-semibold mb-4 text-text-primary">Add New Item</h2>
-                <form onSubmit={handleAddItem} className="flex gap-4">
-                    <input
-                        type="url"
-                        placeholder="Enter Amazon URL"
-                        value={newItemUrl}
-                        onChange={(e) => setNewItemUrl(e.target.value)}
-                        required
-                        className="flex-grow p-2 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary"
-                    />
-                    <button
-                        type="submit"
-                        disabled={adding}
-                        className="bg-primary hover:bg-primary-hover text-white font-bold py-2 px-6 rounded disabled:opacity-50 transition-colors"
-                    >
-                        {adding ? 'Adding...' : 'Track Item'}
-                    </button>
+                <form onSubmit={handleAddItem} className="flex flex-col gap-4">
+                    <div className="flex gap-4">
+                        <input
+                            type="url"
+                            placeholder="Enter Amazon URL"
+                            value={newItemUrl}
+                            onChange={(e) => setNewItemUrl(e.target.value)}
+                            required
+                            className="flex-grow p-2 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary"
+                        />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 text-text-secondary text-sm">
+                        <span className="font-medium text-text-primary">Default Notification:</span>
+                        <div className="flex items-center gap-2">
+                            <span>If price drops by:</span>
+                            <select
+                                value={addThresholdType}
+                                onChange={(e) => setAddThresholdType(e.target.value)}
+                                className="p-2 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary"
+                            >
+                                <option value="percent">Percentage (%)</option>
+                                <option value="absolute">Amount ($)</option>
+                            </select>
+                            <input
+                                type="number"
+                                value={addThresholdValue}
+                                onChange={(e) => setAddThresholdValue(e.target.value)}
+                                className="p-2 w-24 rounded border border-border-color bg-background text-text-primary focus:outline-none focus:border-primary"
+                                placeholder="Value"
+                                step="0.01"
+                            />
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={adding}
+                            className="ml-auto bg-primary hover:bg-primary-hover text-white font-bold py-2 px-6 rounded disabled:opacity-50 transition-colors"
+                        >
+                            {adding ? 'Adding...' : 'Track Item'}
+                        </button>
+                    </div>
                 </form>
             </div>
 
