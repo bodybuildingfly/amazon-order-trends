@@ -7,9 +7,21 @@ import os
 # Add backend to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from backend.api.services.price_service import update_all_prices
+from backend.api.services.price_service import update_all_prices, cleanup_price_history
 
 class TestPriceTrackingLogic(unittest.TestCase):
+
+    @patch('backend.api.services.price_service.get_db_cursor')
+    def test_cleanup_price_history(self, mock_get_db_cursor):
+        """Test that cleanup job deletes duplicate daily records older than 24h."""
+        mock_cursor = MagicMock()
+        mock_get_db_cursor.return_value.__enter__.return_value = mock_cursor
+
+        cleanup_price_history()
+
+        execute_calls = [str(c) for c in mock_cursor.execute.call_args_list]
+        self.assertTrue(any("DELETE FROM price_history" in c for c in execute_calls))
+        self.assertTrue(any("ROW_NUMBER() OVER" in c for c in execute_calls))
 
     @patch('backend.api.services.price_service.get_db_cursor')
     @patch('backend.api.services.price_service.get_amazon_price')
@@ -39,8 +51,8 @@ class TestPriceTrackingLogic(unittest.TestCase):
 
     @patch('backend.api.services.price_service.get_db_cursor')
     @patch('backend.api.services.price_service.get_amazon_price')
-    def test_price_same_same_day(self, mock_get_price, mock_get_db_cursor):
-        """Scenario 2: Price Same, Same Day. Expect NO Insert into history."""
+    def test_price_same_same_day_inserts(self, mock_get_price, mock_get_db_cursor):
+        """Scenario 2: Price Same, Same Day. Expect Insert into history (hourly tracking)."""
         mock_cursor = MagicMock()
         mock_get_db_cursor.return_value.__enter__.return_value = mock_cursor
 
@@ -56,8 +68,8 @@ class TestPriceTrackingLogic(unittest.TestCase):
         update_all_prices()
 
         execute_calls = [str(c) for c in mock_cursor.execute.call_args_list]
-        # Should NOT insert
-        self.assertFalse(any("INSERT INTO price_history" in c for c in execute_calls))
+        # Should insert
+        self.assertTrue(any("INSERT INTO price_history" in c for c in execute_calls))
         # Should UPDATE last_checked
         self.assertTrue(any("UPDATE tracked_items" in c for c in execute_calls))
 
