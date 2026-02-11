@@ -53,7 +53,7 @@ const ReleasesPage = () => {
                             </span>
                         </div>
                         <div className="prose prose-sm max-w-none text-text-secondary">
-                            <ReactMarkdown>{release.body}</ReactMarkdown>
+                            <ReactMarkdown>{release.body ? release.body.replace(/\n/g, '  \n') : ''}</ReactMarkdown>
                         </div>
                     </div>
                 ))}
