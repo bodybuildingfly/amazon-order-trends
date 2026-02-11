@@ -9,6 +9,16 @@ import re
 
 logger = logging.getLogger(__name__)
 
+def extract_asin(url):
+    """
+    Extracts the ASIN from an Amazon URL.
+    Returns the ASIN string or None.
+    """
+    match = re.search(r"(?:/dp/|/gp/product/)([A-Z0-9]{10})", url)
+    if match:
+        return match.group(1)
+    return None
+
 def get_amazon_price(url):
     """
     Scrapes the price of an Amazon product from the given URL.
@@ -74,23 +84,61 @@ def get_amazon_price(url):
             logger.warning(f"Could not extract title for URL: {url}. Page Title was: {page_title_text}")
 
         # 2. Extract Price
-        # Try multiple selectors for price
-        # .a-price .a-offscreen is common for the main price
-        price_element = soup.select_one('.a-price .a-offscreen')
+
+        # Extract ASIN from URL
+        url_asin = extract_asin(url)
+        price_element = None
+
+        # Priority 1: Check corePrice and other specific containers with ASIN verification
+        # Define priority containers
+        main_containers = ['#corePrice_feature_div', '#corePriceDisplay_desktop_feature_div', '#apex_desktop']
+
+        # If we have a URL ASIN, try to find a container specifically for it first
+        if url_asin:
+            container = soup.find('div', attrs={'data-csa-c-asin': url_asin})
+            if container:
+                price_element = container.select_one('.a-price .a-offscreen')
+
+        # If no specific container found, check the main containers
         if not price_element:
-            price_element = soup.select_one('#priceblock_ourprice')
+            for selector in main_containers:
+                container = soup.select_one(selector)
+                if container:
+                    # If we have a URL ASIN, verify against the container's ASIN if present
+                    page_asin = container.get('data-csa-c-asin')
+                    if url_asin and page_asin and url_asin != page_asin:
+                        logger.warning(f"ASIN mismatch in {selector}: URL={url_asin}, Page={page_asin}. Skipping.")
+                        continue
+
+                    price_element = container.select_one('.a-price .a-offscreen')
+                    if price_element:
+                        break
+
+        # Priority 2: Fallback to legacy selectors or generic (only if strict search failed)
+        # If url_asin is present, we DO NOT fallback to generic selectors to prevent scraping wrong variation prices.
+        if not price_element and not url_asin:
+            price_element = soup.select_one('.a-price .a-offscreen')
+
+            if not price_element:
+                price_element = soup.select_one('#priceblock_ourprice')
+            if not price_element:
+                price_element = soup.select_one('#priceblock_dealprice')
+
         if not price_element:
-            price_element = soup.select_one('#priceblock_dealprice')
-        if not price_element:
-            # Sometimes price is in a span with class a-price-whole
-            price_whole = soup.select_one('.a-price-whole')
-            price_fraction = soup.select_one('.a-price-fraction')
-            if price_whole and price_fraction:
-                whole = price_whole.get_text(strip=True).rstrip('.')
-                fraction = price_fraction.get_text(strip=True)
-                price_text = f"{whole}.{fraction}"
-            elif price_whole:
-                price_text = price_whole.get_text(strip=True)
+            # Only check price_whole if we don't have a verified ASIN (or if strict check passed but failed to get element which shouldn't happen if we broke loop)
+            # Actually, if url_asin is present, we shouldn't use .a-price-whole either as it's very generic.
+            if not url_asin:
+                # Sometimes price is in a span with class a-price-whole
+                price_whole = soup.select_one('.a-price-whole')
+                price_fraction = soup.select_one('.a-price-fraction')
+                if price_whole and price_fraction:
+                    whole = price_whole.get_text(strip=True).rstrip('.')
+                    fraction = price_fraction.get_text(strip=True)
+                    price_text = f"{whole}.{fraction}"
+                elif price_whole:
+                    price_text = price_whole.get_text(strip=True)
+                else:
+                    price_text = None
             else:
                 price_text = None
         else:
