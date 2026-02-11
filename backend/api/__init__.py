@@ -103,6 +103,7 @@ def create_app(config_name=None):
     from .routes.ingestion import ingestion_bp
     from .routes.dashboard import dashboard_bp
     from .routes.price_tracking import price_tracking_bp
+    from .routes.releases import releases_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -111,6 +112,7 @@ def create_app(config_name=None):
     app.register_blueprint(ingestion_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(price_tracking_bp)
+    app.register_blueprint(releases_bp)
 
     # --- CLI Commands ---
     @app.cli.command("db-migrate")

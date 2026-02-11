@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { useAuth } from '../context/AuthContext';
 import apiClient from '../api';
 
 const Spinner = () => <div className="flex justify-center items-center p-10"><div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
@@ -14,8 +13,6 @@ const AdminSettingsPage = () => {
         discord_notification_preference: 'never',
     });
     
-    const { user } = useAuth();
-
     useEffect(() => {
         const fetchSettings = async () => {
             setIsLoading(true);

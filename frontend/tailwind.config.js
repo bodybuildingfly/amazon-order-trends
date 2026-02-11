@@ -34,6 +34,7 @@ module.exports = {
     require('@tailwindcss/forms')({
       strategy: 'class', // Use classes like `form-input`, `form-checkbox`, etc.
     }),
+    require('@tailwindcss/typography'),
   ],
 }
 
