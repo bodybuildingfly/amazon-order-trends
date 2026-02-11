@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 
 // --- Component & Context Imports ---
 import ThemeToggle from './ThemeToggle';
 import { useAuth } from '../context/AuthContext';
+import apiClient from '../api';
 
 // --- Icon Imports ---
 const DashboardIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>;
@@ -35,6 +36,22 @@ const NavLink = ({ to, icon, children }) => {
 const MainLayout = ({ children }) => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const [latestVersion, setLatestVersion] = useState(null);
+
+    useEffect(() => {
+        const fetchLatestRelease = async () => {
+            try {
+                const response = await apiClient.get('/api/releases');
+                if (response.data && response.data.length > 0) {
+                     // Assuming the first one is the latest
+                    setLatestVersion(response.data[0].tag_name);
+                }
+            } catch (error) {
+                console.error("Failed to fetch latest release version", error);
+            }
+        };
+        fetchLatestRelease();
+    }, []);
 
     const handleLogout = () => {
         logout();
@@ -46,7 +63,16 @@ const MainLayout = ({ children }) => {
             <div className="grid grid-cols-12">
                 {/* --- Left Sidebar --- */}
                 <aside className="col-span-3 bg-surface border-r border-border-color h-screen p-6 flex flex-col">
-                    <h1 className="text-2xl font-bold text-text-primary mb-10 text-center">Amazon Order Trends</h1>
+                    <h1 className="text-2xl font-bold text-text-primary mb-1 text-center">Amazon Order Trends</h1>
+                    {latestVersion && (
+                        <div className="text-center mb-8">
+                            <Link to="/releases" className="text-sm text-text-accent hover:underline">
+                                Version {latestVersion}
+                            </Link>
+                        </div>
+                    )}
+                    {!latestVersion && <div className="mb-10"></div>}
+
                     <nav className="space-y-2 flex-grow">
                         <NavLink to="/dashboard" icon={<DashboardIcon />}>Dashboard</NavLink>
                         <NavLink to="/table" icon={<TableIcon />}>All Orders</NavLink>
@@ -87,4 +113,3 @@ const MainLayout = ({ children }) => {
 };
 
 export default MainLayout;
-

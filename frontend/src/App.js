@@ -12,6 +12,7 @@ import UserSettingsPage from './components/UserSettingsPage';
 import AdminSettingsPage from './components/AdminSettingsPage';
 import UserManagementPage from './components/UserManagementPage';
 import PriceTrackingPage from './components/PriceTrackingPage';
+import ReleasesPage from './components/ReleasesPage';
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
@@ -49,6 +50,7 @@ function App() {
                     <Route path="/table" element={<InteractiveDataTable />} />
                     <Route path="/repeat-orders" element={<RepeatOrdersTable />} />
                     <Route path="/price-tracking" element={<PriceTrackingPage />} />
+                    <Route path="/releases" element={<ReleasesPage />} />
                     <Route path="/settings" element={<UserSettingsPage />} />
                     {user?.role === 'admin' && (
                         <>
