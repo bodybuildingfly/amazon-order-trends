@@ -87,6 +87,11 @@ def get_amazon_price(url):
 
         # Extract ASIN from URL
         url_asin = extract_asin(url)
+
+        # If ASIN not found in initial URL, try to extract from the final URL (handling short links/redirects)
+        if not url_asin:
+            url_asin = extract_asin(response.url)
+
         price_element = None
 
         # Priority 1: Check corePrice and other specific containers with ASIN verification
