@@ -127,13 +127,15 @@ def main(user_id, manual_days_override=None, debug=False):
         logging.getLogger("amazonorders").addHandler(debug_handler)
         logging.getLogger("amazonorders").setLevel(logging.DEBUG)
 
-        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'output')
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'output')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-        config = AmazonOrdersConfig(data={"output_dir": output_dir})
-    else:
-        config = None
+    config_data = {"output_dir": output_dir}
+    if os.environ.get("CAPSOLVER_API_KEY"):
+        config_data["auth_forms_classes"] = ["amazonorders.contrib.waf.capsolver.CapSolverWafForm"]
+
+    config = AmazonOrdersConfig(data=config_data)
 
     try:
         initialize_fernet()

@@ -26,6 +26,7 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - CAPSOLVER_API_KEY=${CAPSOLVER_API_KEY}
       - WATCHPACK_POLLING=true
       - MIGRATIONS_DIR=/app/backend/migrations/versions
     # command: >
