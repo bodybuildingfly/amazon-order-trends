@@ -34,6 +34,16 @@ export const AuthProvider = ({ children }) => {
             logout();
         }
         setIsLoading(false);
+
+        const handleUnauthorized = () => {
+            logout();
+        };
+
+        window.addEventListener('unauthorized', handleUnauthorized);
+
+        return () => {
+            window.removeEventListener('unauthorized', handleUnauthorized);
+        };
     }, [logout]);
 
     const login = useCallback(async (username, password) => {
