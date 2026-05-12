@@ -43,7 +43,10 @@ def run_ingestion_route():
         job_id = cur.fetchone()[0]
 
     app = current_app._get_current_object()
-    thread = threading.Thread(target=run_manual_ingestion_job, args=(app, current_user_id, job_id, days, debug))
+    thread = threading.Thread(
+        target=run_manual_ingestion_job,
+        kwargs={'app': app, 'user_id': current_user_id, 'job_id': job_id, 'days': days, 'debug': debug, 'job_type': 'manual'}
+    )
     thread.daemon = True
     thread.start()
 
