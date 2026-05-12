@@ -57,6 +57,10 @@ def create_app(config_name=None):
          # Run cleanup every day at 01:30 AM
          scheduler.add_job(id='cleanup_history', func=cleanup_price_history, trigger='cron', hour=1, minute=30, replace_existing=True)
 
+    # Load all user scheduled syncs
+    from backend.api.services.sync_service import schedule_all_auto_syncs
+    schedule_all_auto_syncs(app)
+
     # --- Logging ---
     # Configure Flask's built-in logger to stream to stdout
     app.logger.handlers.clear()

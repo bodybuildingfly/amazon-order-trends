@@ -35,6 +35,9 @@ const UserSettingsPage = () => {
         amazon_password: '',
         amazon_otp_secret_key: '',
         price_change_notification_webhook_url: '',
+        is_auto_sync_enabled: false,
+        auto_sync_time: '',
+        auto_sync_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
 
     const pollImportStatus = useCallback(async () => {
@@ -114,6 +117,8 @@ const UserSettingsPage = () => {
                     amazon_email: settingsRes.data.amazon_email,
                     amazon_otp_secret_key: settingsRes.data.amazon_otp_secret_key,
                     price_change_notification_webhook_url: settingsRes.data.price_change_notification_webhook_url,
+                    is_auto_sync_enabled: settingsRes.data.is_auto_sync_enabled,
+                    auto_sync_time: settingsRes.data.auto_sync_time,
                 }));
                 setIsConfigured(settingsRes.data.is_configured);
 
@@ -161,9 +166,13 @@ const UserSettingsPage = () => {
         e.preventDefault();
         setIsSaving(true);
         try {
-            const { data } = await apiClient.post('/api/settings/user', formData);
+            const dataToSave = {
+                ...formData,
+                auto_sync_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            };
+            const { data } = await apiClient.post('/api/settings/user', dataToSave);
             toast.success(data.message);
-            setFormData(prev => ({ ...prev, amazon_password: '' }));
+            setFormData(prev => ({ ...prev, amazon_password: '', auto_sync_timezone: dataToSave.auto_sync_timezone }));
             const settingsRes = await apiClient.get('/api/settings');
             setIsConfigured(settingsRes.data.is_configured);
         } catch (err) {
@@ -243,7 +252,39 @@ const UserSettingsPage = () => {
                         <input type="text" name="amazon_otp_secret_key" id="amazon_otp_secret_key" value={formData.amazon_otp_secret_key} onChange={handleFormChange} className="form-input" />
                     </div>
                     <div className="pt-4 border-t border-border-color">
-                        <h3 className="text-lg font-semibold text-text-primary mb-4">Notifications</h3>
+                        <h3 className="text-lg font-semibold text-text-primary mb-4">Automatic Data Import</h3>
+                        <div className="flex items-center gap-2 mb-4">
+                            <input
+                                type="checkbox"
+                                name="is_auto_sync_enabled"
+                                id="is_auto_sync_enabled"
+                                checked={formData.is_auto_sync_enabled}
+                                onChange={handleFormChange}
+                                className="w-4 h-4 text-primary bg-surface border-border-color rounded focus:ring-primary"
+                            />
+                            <label htmlFor="is_auto_sync_enabled" className="text-sm text-text-secondary select-none cursor-pointer">
+                                Enable Automatic Data Import
+                            </label>
+                        </div>
+                        {formData.is_auto_sync_enabled && (
+                            <div className="mb-4">
+                                <label htmlFor="auto_sync_time" className="form-label">Automatic Import Time</label>
+                                <input
+                                    type="time"
+                                    name="auto_sync_time"
+                                    id="auto_sync_time"
+                                    value={formData.auto_sync_time || ''}
+                                    onChange={handleFormChange}
+                                    className="form-input w-48"
+                                    required={formData.is_auto_sync_enabled}
+                                />
+                                <p className="text-xs text-text-secondary mt-1">
+                                    The local time each day when the data import will run.
+                                </p>
+                            </div>
+                        )}
+
+                        <h3 className="text-lg font-semibold text-text-primary mb-4 mt-6">Notifications</h3>
                         <div>
                             <label htmlFor="price_change_notification_webhook_url" className="form-label">Discord Price Alert Webhook URL</label>
                             <div className="flex gap-2">

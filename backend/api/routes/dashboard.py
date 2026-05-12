@@ -36,22 +36,24 @@ def get_dashboard_summary():
     SELECT
         (SELECT total_spending FROM TotalStats),
         (SELECT total_orders FROM TotalStats),
-        (SELECT json_agg(json_build_object('month', TO_CHAR(month, 'YYYY-MM'), 'total_spending', total_spending)) FROM MonthlySpending)
+        (SELECT json_agg(json_build_object('month', TO_CHAR(month, 'YYYY-MM'), 'total_spending', total_spending)) FROM MonthlySpending),
+        (SELECT updated_at FROM ingestion_jobs WHERE user_id = %s AND status = 'completed' ORDER BY updated_at DESC LIMIT 1)
     """
 
     try:
         with get_db_cursor() as cur:
-            cur.execute(query, (current_user_id,))
+            cur.execute(query, (current_user_id, current_user_id))
             result = cur.fetchone()
 
         if not result:
             return jsonify({
                 "total_spending": 0,
                 "total_orders": 0,
-                "spending_trend": []
+                "spending_trend": [],
+                "last_sync_time": None
             })
 
-        total_spending, total_orders, spending_trend = result
+        total_spending, total_orders, spending_trend, last_sync_time = result
 
         # Handle the case where there is no spending trend
         if spending_trend is None:
@@ -60,7 +62,8 @@ def get_dashboard_summary():
         return jsonify({
             "total_spending": float(total_spending) if total_spending else 0,
             "total_orders": int(total_orders) if total_orders else 0,
-            "spending_trend": spending_trend
+            "spending_trend": spending_trend,
+            "last_sync_time": last_sync_time.isoformat() if last_sync_time else None
         })
 
     except Exception as e:
