@@ -17,14 +17,17 @@ def get_settings():
                 """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, 
                           discord_webhook_url, discord_notification_preference,
                           price_change_notification_webhook_url,
-                          default_notification_threshold_type, default_notification_threshold_value
+                          default_notification_threshold_type, default_notification_threshold_value,
+                          is_auto_sync_enabled,
+                          TO_CHAR(auto_sync_time, 'HH24:MI') as auto_sync_time,
+                          auto_sync_timezone
                    FROM user_settings WHERE user_id = %s""",
                 (current_user_id,)
             )
             settings_row = cur.fetchone()
 
         if settings_row:
-            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url, def_thresh_type, def_thresh_val = settings_row
+            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url, def_thresh_type, def_thresh_val, auto_sync_en, auto_sync_time, auto_sync_timezone = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
@@ -33,7 +36,10 @@ def get_settings():
                 "discord_notification_preference": notification_pref or 'off',
                 "price_change_notification_webhook_url": price_webhook_url or '',
                 "default_notification_threshold_type": def_thresh_type or 'percent',
-                "default_notification_threshold_value": def_thresh_val
+                "default_notification_threshold_value": def_thresh_val,
+                "is_auto_sync_enabled": bool(auto_sync_en),
+                "auto_sync_time": auto_sync_time or '',
+                "auto_sync_timezone": auto_sync_timezone or 'UTC'
             }), 200
         else:
             # If no settings row exists, return defaults
@@ -45,7 +51,10 @@ def get_settings():
                 "discord_notification_preference": 'off',
                 "price_change_notification_webhook_url": '',
                 "default_notification_threshold_type": 'percent',
-                "default_notification_threshold_value": None
+                "default_notification_threshold_value": None,
+                "is_auto_sync_enabled": False,
+                "auto_sync_time": '',
+                "auto_sync_timezone": 'UTC'
             }), 200
     except Exception as e:
         current_app.logger.error(f"Failed to get settings: {e}", exc_info=True)
@@ -67,11 +76,18 @@ def save_user_settings():
             ('amazon_otp_secret_key', 'amazon_otp_secret_key'),
             ('price_change_notification_webhook_url', 'price_change_notification_webhook_url'),
             ('default_notification_threshold_type', 'default_notification_threshold_type'),
-            ('default_notification_threshold_value', 'default_notification_threshold_value')
+            ('default_notification_threshold_value', 'default_notification_threshold_value'),
+            ('is_auto_sync_enabled', 'is_auto_sync_enabled'),
+            ('auto_sync_time', 'auto_sync_time'),
+            ('auto_sync_timezone', 'auto_sync_timezone')
         ]
 
         columns = ['user_id']
         values = [current_user_id]
+
+        # Clean auto_sync_time before processing
+        if 'auto_sync_time' in data and not data['auto_sync_time']:
+            data['auto_sync_time'] = None
 
         # Handle password specially
         if 'amazon_password' in data:
@@ -109,6 +125,11 @@ def save_user_settings():
 
         with get_db_cursor(commit=True) as cur:
             cur.execute(query, tuple(values))
+
+        # After saving, handle auto-sync scheduling
+        from backend.api.services.sync_service import schedule_auto_sync_for_user
+        if 'is_auto_sync_enabled' in data or 'auto_sync_time' in data:
+            schedule_auto_sync_for_user(current_app._get_current_object(), current_user_id)
 
         return jsonify({"message": "User settings saved successfully."}), 200
     except Exception as e:

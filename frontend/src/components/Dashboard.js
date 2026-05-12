@@ -3,12 +3,18 @@ import { Line } from 'react-chartjs-2';
 import { useTheme } from '../context/ThemeContext';
 import { Chart, registerables } from 'chart.js';
 import 'chartjs-adapter-date-fns';
+import { formatDistanceToNow, differenceInHours } from 'date-fns';
 import { toast } from 'react-toastify';
 import api from '../api';
 import StatCard from './common/StatCard';
 import SkeletonLoader from './common/SkeletonLoader';
 
 Chart.register(...registerables);
+
+// Generic Icons
+const DollarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>;
+const ShoppingBagIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>;
+const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
 
 const DashboardSkeleton = () => (
     <div className="p-8 bg-background min-h-screen">
@@ -68,6 +74,33 @@ const Dashboard = () => {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [summary, theme]);
+
+    const getSyncStatusProps = () => {
+        if (!summary || !summary.last_sync_time) {
+            return {
+                value: 'Never',
+                customColorClass: 'bg-red-500 text-white' // Red for never synced
+            };
+        }
+
+        const syncDate = new Date(summary.last_sync_time);
+        const hoursDiff = differenceInHours(new Date(), syncDate);
+        const timeAgo = formatDistanceToNow(syncDate, { addSuffix: true });
+
+        if (hoursDiff <= 24) {
+            return {
+                value: timeAgo,
+                customColorClass: 'bg-green-500 text-white' // Green for < 24h
+            };
+        } else {
+            return {
+                value: timeAgo,
+                customColorClass: 'bg-yellow-500 text-white' // Yellow for > 24h
+            };
+        }
+    };
+
+    const syncProps = getSyncStatusProps();
 
     const chartOptions = useMemo(() => {
         const rootStyles = getComputedStyle(document.documentElement);
@@ -130,10 +163,18 @@ const Dashboard = () => {
                 <StatCard 
                     title="Total Spending" 
                     value={`$${summary.total_spending.toFixed(2)}`}
+                    icon={<DollarIcon />}
                 />
                 <StatCard 
                     title="Total Orders" 
                     value={summary.total_orders}
+                    icon={<ShoppingBagIcon />}
+                />
+                <StatCard
+                    title="Last Synced"
+                    value={syncProps.value}
+                    icon={<ClockIcon />}
+                    customColorClass={syncProps.customColorClass}
                 />
             </div>
 
