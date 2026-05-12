@@ -11,7 +11,7 @@ const apiClient = axios.create({
 // Request interceptor to add the JWT token to headers
 apiClient.interceptors.request.use(
     (config) => {
-        const authData = localStorage.getItem('auth');
+        const authData = localStorage.getItem('userInfo');
         if (authData) {
             const { token } = JSON.parse(authData);
             if (token) {
@@ -32,7 +32,7 @@ apiClient.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       console.error("Authentication Error:", error.response);
       toast.error("Session expired. Please log in again.");
-      // Future logic to handle automatic logout could go here.
+      window.dispatchEvent(new CustomEvent('unauthorized'));
     }
     return Promise.reject(error);
   }
