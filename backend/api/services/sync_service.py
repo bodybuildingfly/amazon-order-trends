@@ -38,8 +38,11 @@ def run_scheduled_sync(app, user_id):
         app.logger.info(f"Starting scheduled sync for user {user_id} (Job ID: {job_id}).")
 
         # We can reuse run_manual_ingestion_job since it takes the job_id and updates it.
-        # Days can be standard (e.g., 60 days).
-        thread = threading.Thread(target=run_manual_ingestion_job, args=(app, user_id, job_id, 60, False))
+        # Fetch only the last 3 days for scheduled daily syncs to catch errors from the previous execution.
+        thread = threading.Thread(
+            target=run_manual_ingestion_job,
+            kwargs={'app': app, 'user_id': user_id, 'job_id': job_id, 'days': 3, 'debug': False, 'job_type': 'scheduled'}
+        )
         thread.daemon = True
         thread.start()
 

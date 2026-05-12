@@ -7,7 +7,7 @@ from backend.shared.db import get_db_cursor
 from backend.ingestion.ingestion_script import main as run_ingestion_generator
 from backend.api.services.notification_service import send_discord_notification
 
-def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int, debug: bool = False):
+def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int, debug: bool = False, job_type: str = 'manual'):
     """
     Runs the ingestion process in a background thread for a single user
     and updates the job status in the database.
@@ -25,7 +25,7 @@ def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int, d
                     (json.dumps(progress), json.dumps(details), job_id)
                 )
 
-            app.logger.info(f"Starting manual ingestion for user {user_id} (Job ID: {job_id}) for {days} days.")
+            app.logger.info(f"Starting {job_type} ingestion for user {user_id} (Job ID: {job_id}) for {days} days.")
             
             # The core ingestion logic
             for event_type, data in run_ingestion_generator(user_id=user_id, manual_days_override=days, debug=debug):
@@ -65,7 +65,7 @@ def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int, d
                     cur.execute("UPDATE ingestion_jobs SET status = 'completed' WHERE id = %s", (job_id,))
 
         except Exception as e:
-            app.logger.error(f"Manual ingestion job {job_id} failed for user {user_id}: {e}", exc_info=True)
+            app.logger.error(f"{job_type.capitalize()} ingestion job {job_id} failed for user {user_id}: {e}", exc_info=True)
             details['error'] = str(e)
             with get_db_cursor(commit=True) as cur:
                 cur.execute(
@@ -76,7 +76,7 @@ def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int, d
             with get_db_cursor(commit=True) as cur:
                 cur.execute("UPDATE ingestion_jobs SET updated_at = %s WHERE id = %s", (datetime.utcnow(), job_id))
             
-            app.logger.info(f"Manual ingestion job {job_id} finished for user {user_id}. Checking for notifications...")
+            app.logger.info(f"{job_type.capitalize()} ingestion job {job_id} finished for user {user_id}. Checking for notifications...")
             try:
                 with get_db_cursor() as cur:
                     # For manual jobs, we now use the admin's settings globally.
@@ -111,14 +111,14 @@ def run_manual_ingestion_job(app: Flask, user_id: str, job_id: int, days: int, d
                     app.logger.info(f"[Notification Check] Final decision for job {job_id}: should_send = {should_send}")
 
                     if should_send:
-                        app.logger.info(f"Preparing to send notification for manual job {job_id}...")
+                        app.logger.info(f"Preparing to send notification for {job_type} job {job_id}...")
                         if job_has_error:
-                            title = f"Manual Ingestion Job Failed (ID: {job_id})"
-                            description = "Your manually triggered ingestion job has failed."
+                            title = f"{job_type.capitalize()} Ingestion Job Failed (ID: {job_id})"
+                            description = f"Your {job_type}ly triggered ingestion job has failed."
                             color = 15158332  # Red
                         else:
-                            title = f"Manual Ingestion Job Completed (ID: {job_id})"
-                            description = "Your manually triggered ingestion job has finished successfully."
+                            title = f"{job_type.capitalize()} Ingestion Job Completed (ID: {job_id})"
+                            description = f"Your {job_type}ly triggered ingestion job has finished successfully."
                             color = 3066993  # Green
                         
                         send_discord_notification(webhook_url, title, description, color, details.get('log', []))
