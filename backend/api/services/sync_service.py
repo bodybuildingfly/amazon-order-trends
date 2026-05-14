@@ -1,6 +1,8 @@
 import json
 import threading
 import pytz
+import os
+from datetime import datetime
 from flask import current_app
 from backend.shared.db import get_db_cursor
 from backend.api.extensions import scheduler
@@ -47,104 +49,41 @@ def run_scheduled_sync(app, user_id):
         thread.start()
 
 
-def schedule_auto_sync_for_user(app, user_id):
+def check_scheduled_syncs(app):
     """
-    Updates the APScheduler job for a given user based on their current settings in DB.
+    Runs every minute to check if any user has a scheduled sync matching the current time
+    in the application's global timezone.
     """
-    with app.app_context():
-        with get_db_cursor() as cur:
-            cur.execute(
-                """
-                SELECT is_auto_sync_enabled, TO_CHAR(auto_sync_time, 'HH24:MI') as auto_sync_time, auto_sync_timezone
-                FROM user_settings WHERE user_id = %s
-                """,
-                (user_id,)
-            )
-            row = cur.fetchone()
+    tz_str = os.environ.get('APP_TIMEZONE', 'UTC')
+    try:
+        tz = pytz.timezone(tz_str)
+    except pytz.UnknownTimeZoneError:
+        app.logger.warning(f"Unknown timezone '{tz_str}' specified in APP_TIMEZONE. Defaulting to UTC.")
+        tz = pytz.utc
 
-        job_id = f"auto_sync_user_{user_id}"
+    now_local = datetime.now(tz)
+    current_time_str = now_local.strftime("%H:%M")
 
-        if row:
-            is_enabled, sync_time, tz_string = row
-
-            if is_enabled and sync_time:
-                hour, minute = sync_time.split(':')
-
-                # Set timezone if provided, otherwise default to UTC
-                timezone = pytz.utc
-                if tz_string:
-                    try:
-                        timezone = pytz.timezone(tz_string)
-                    except pytz.UnknownTimeZoneError:
-                        app.logger.warning(f"Unknown timezone '{tz_string}' for user {user_id}. Defaulting to UTC.")
-
-                # Check if job exists, update it, else add it
-                if scheduler.get_job(job_id):
-                    scheduler.modify_job(job_id, trigger='cron', hour=hour, minute=minute, timezone=timezone)
-                    app.logger.info(f"Updated scheduled sync for user {user_id} to {sync_time} ({timezone}).")
-                else:
-                    scheduler.add_job(
-                        id=job_id,
-                        func=run_scheduled_sync,
-                        args=[app, user_id],
-                        trigger='cron',
-                        hour=hour,
-                        minute=minute,
-                        timezone=timezone,
-                        replace_existing=True
-                    )
-                    app.logger.info(f"Added scheduled sync for user {user_id} at {sync_time} ({timezone}).")
-            else:
-                # Remove job if disabled or time is missing
-                if scheduler.get_job(job_id):
-                    scheduler.remove_job(job_id)
-                    app.logger.info(f"Removed scheduled sync for user {user_id} (disabled or missing time).")
-        else:
-            if scheduler.get_job(job_id):
-                scheduler.remove_job(job_id)
-                app.logger.info(f"Removed scheduled sync for user {user_id} (settings not found).")
-
-def schedule_all_auto_syncs(app):
-    """
-    On app startup, read all users with auto-sync enabled and add them to the scheduler.
-    """
     with app.app_context():
         try:
             with get_db_cursor() as cur:
                 cur.execute(
                     """
-                    SELECT user_id, is_auto_sync_enabled, TO_CHAR(auto_sync_time, 'HH24:MI') as auto_sync_time, auto_sync_timezone
-                    FROM user_settings WHERE is_auto_sync_enabled = TRUE AND auto_sync_time IS NOT NULL
-                    """
+                    SELECT user_id
+                    FROM user_settings
+                    WHERE is_auto_sync_enabled = TRUE
+                      AND TO_CHAR(auto_sync_time, 'HH24:MI') = %s
+                    """,
+                    (current_time_str,)
                 )
                 rows = cur.fetchall()
 
-            for user_id, is_enabled, sync_time, tz_string in rows:
-                hour, minute = sync_time.split(':')
+            for (user_id,) in rows:
+                run_scheduled_sync(app, user_id)
 
-                timezone = pytz.utc
-                if tz_string:
-                    try:
-                        timezone = pytz.timezone(tz_string)
-                    except pytz.UnknownTimeZoneError:
-                        pass
-
-                job_id = f"auto_sync_user_{user_id}"
-                if not scheduler.get_job(job_id):
-                    scheduler.add_job(
-                        id=job_id,
-                        func=run_scheduled_sync,
-                        args=[app, user_id],
-                        trigger='cron',
-                        hour=hour,
-                        minute=minute,
-                        timezone=timezone,
-                        replace_existing=True
-                    )
-                    app.logger.info(f"Restored scheduled sync for user {user_id} at {sync_time} ({timezone}).")
         except psycopg2.errors.UndefinedColumn:
-            app.logger.warning("Could not schedule auto-syncs on startup: schema migration pending.")
+            app.logger.warning("Could not check scheduled syncs: schema migration pending.")
         except psycopg2.errors.UndefinedTable:
-            app.logger.warning("Could not schedule auto-syncs on startup: user_settings table does not exist.")
+            app.logger.warning("Could not check scheduled syncs: user_settings table does not exist.")
         except Exception as e:
-            app.logger.error(f"Failed to schedule auto-syncs on startup: {e}")
+            app.logger.error(f"Failed to check scheduled syncs: {e}")
