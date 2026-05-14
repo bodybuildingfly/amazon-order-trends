@@ -64,11 +64,15 @@ class TestDefaultNotifications(unittest.TestCase):
         params = call_args[0][1]
 
         # Check if dynamic SQL constructed correctly
-        self.assertIn("INSERT INTO user_settings", sql)
-        self.assertIn("default_notification_threshold_type", sql)
-        self.assertIn("default_notification_threshold_value", sql)
+        # sql is a psycopg2.sql.SQL object, so we convert it to string using context=None if possible
+        # or we just check the string representation
+        sql_str = repr(sql)
+
+        self.assertIn("INSERT INTO user_settings", sql_str)
+        self.assertIn("default_notification_threshold_type", sql_str)
+        self.assertIn("default_notification_threshold_value", sql_str)
         # Check if ON CONFLICT DO UPDATE is present
-        self.assertIn("ON CONFLICT (user_id) DO UPDATE SET", sql)
+        self.assertIn("ON CONFLICT (user_id) DO UPDATE SET", sql_str)
 
         # Verify values passed
         self.assertIn('user-123', params)
@@ -76,7 +80,7 @@ class TestDefaultNotifications(unittest.TestCase):
         self.assertIn(15.50, params)
 
         # Verify that other columns like amazon_email are NOT in the query (since we didn't pass them)
-        self.assertNotIn("amazon_email", sql)
+        self.assertNotIn("amazon_email", sql_str)
 
 
     @patch('backend.api.routes.price_tracking.get_db_cursor')

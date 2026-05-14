@@ -104,20 +104,32 @@ def save_user_settings():
             # No fields to update
             return jsonify({"message": "No changes detected."}), 200
 
-        # Construct Dynamic SQL
-        placeholders = ', '.join(['%s'] * len(columns))
-        col_names = ', '.join(columns)
+        # Construct Dynamic SQL using psycopg2.sql
+        from psycopg2 import sql
+
+        # col_names formatting
+        sql_columns = sql.SQL(', ').join(map(sql.Identifier, columns))
+        sql_placeholders = sql.SQL(', ').join(sql.Placeholder() * len(columns))
 
         # Exclude user_id from SET clause
-        update_assignments = [f"{col} = EXCLUDED.{col}" for col in columns if col != 'user_id']
-        update_clause = ', '.join(update_assignments)
+        update_assignments = []
+        for col in columns:
+            if col != 'user_id':
+                update_assignments.append(
+                    sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
+                )
+        sql_update_clause = sql.SQL(', ').join(update_assignments)
 
-        query = f"""
+        query = sql.SQL("""
             INSERT INTO user_settings ({col_names})
             VALUES ({placeholders})
             ON CONFLICT (user_id) DO UPDATE SET
             {update_clause};
-        """
+        """).format(
+            col_names=sql_columns,
+            placeholders=sql_placeholders,
+            update_clause=sql_update_clause
+        )
 
         with get_db_cursor(commit=True) as cur:
             cur.execute(query, tuple(values))
