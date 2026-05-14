@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_asin ON items(asin);
+CREATE INDEX IF NOT EXISTS idx_items_order_id ON items(order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 
 -- Table to store information and status about ingestion jobs
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
