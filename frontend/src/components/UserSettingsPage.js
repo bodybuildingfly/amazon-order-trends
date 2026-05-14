@@ -37,7 +37,6 @@ const UserSettingsPage = () => {
         price_change_notification_webhook_url: '',
         is_auto_sync_enabled: false,
         auto_sync_time: '',
-        auto_sync_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
 
     const pollImportStatus = useCallback(async () => {
@@ -167,12 +166,11 @@ const UserSettingsPage = () => {
         setIsSaving(true);
         try {
             const dataToSave = {
-                ...formData,
-                auto_sync_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                ...formData
             };
             const { data } = await apiClient.post('/api/settings/user', dataToSave);
             toast.success(data.message);
-            setFormData(prev => ({ ...prev, amazon_password: '', auto_sync_timezone: dataToSave.auto_sync_timezone }));
+            setFormData(prev => ({ ...prev, amazon_password: '' }));
             const settingsRes = await apiClient.get('/api/settings');
             setIsConfigured(settingsRes.data.is_configured);
         } catch (err) {

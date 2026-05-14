@@ -19,15 +19,14 @@ def get_settings():
                           price_change_notification_webhook_url,
                           default_notification_threshold_type, default_notification_threshold_value,
                           is_auto_sync_enabled,
-                          TO_CHAR(auto_sync_time, 'HH24:MI') as auto_sync_time,
-                          auto_sync_timezone
+                          TO_CHAR(auto_sync_time, 'HH24:MI') as auto_sync_time
                    FROM user_settings WHERE user_id = %s""",
                 (current_user_id,)
             )
             settings_row = cur.fetchone()
 
         if settings_row:
-            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url, def_thresh_type, def_thresh_val, auto_sync_en, auto_sync_time, auto_sync_timezone = settings_row
+            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url, def_thresh_type, def_thresh_val, auto_sync_en, auto_sync_time = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
@@ -38,8 +37,7 @@ def get_settings():
                 "default_notification_threshold_type": def_thresh_type or 'percent',
                 "default_notification_threshold_value": def_thresh_val,
                 "is_auto_sync_enabled": bool(auto_sync_en),
-                "auto_sync_time": auto_sync_time or '',
-                "auto_sync_timezone": auto_sync_timezone or 'UTC'
+                "auto_sync_time": auto_sync_time or ''
             }), 200
         else:
             # If no settings row exists, return defaults
@@ -53,8 +51,7 @@ def get_settings():
                 "default_notification_threshold_type": 'percent',
                 "default_notification_threshold_value": None,
                 "is_auto_sync_enabled": False,
-                "auto_sync_time": '',
-                "auto_sync_timezone": 'UTC'
+                "auto_sync_time": ''
             }), 200
     except Exception as e:
         current_app.logger.error(f"Failed to get settings: {e}", exc_info=True)
@@ -78,8 +75,7 @@ def save_user_settings():
             ('default_notification_threshold_type', 'default_notification_threshold_type'),
             ('default_notification_threshold_value', 'default_notification_threshold_value'),
             ('is_auto_sync_enabled', 'is_auto_sync_enabled'),
-            ('auto_sync_time', 'auto_sync_time'),
-            ('auto_sync_timezone', 'auto_sync_timezone')
+            ('auto_sync_time', 'auto_sync_time')
         ]
 
         columns = ['user_id']
@@ -126,10 +122,7 @@ def save_user_settings():
         with get_db_cursor(commit=True) as cur:
             cur.execute(query, tuple(values))
 
-        # After saving, handle auto-sync scheduling
-        from backend.api.services.sync_service import schedule_auto_sync_for_user
-        if 'is_auto_sync_enabled' in data or 'auto_sync_time' in data:
-            schedule_auto_sync_for_user(current_app._get_current_object(), current_user_id)
+        # Auto-sync scheduling is now handled globally via check_scheduled_syncs
 
         return jsonify({"message": "User settings saved successfully."}), 200
     except Exception as e:

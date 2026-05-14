@@ -27,6 +27,7 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - CAPSOLVER_API_KEY=${CAPSOLVER_API_KEY}
+      - APP_TIMEZONE=${APP_TIMEZONE:-UTC}
       - WATCHPACK_POLLING=true
       - MIGRATIONS_DIR=/app/backend/migrations/versions
     # command: >
