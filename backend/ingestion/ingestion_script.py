@@ -199,6 +199,32 @@ def main(user_id, manual_days_override=None, debug=False):
             debug=debug,
             config=config
         )
+
+        # Monkey-patch the session's request method to retry on 503 errors
+        original_request = session.request
+
+        def patched_request(*args, **kwargs):
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    response = original_request(*args, **kwargs)
+                    if hasattr(response, 'response') and response.response.status_code == 503:
+                        if attempt < retries - 1:
+                            url = args[1] if len(args) > 1 else 'unknown URL'
+                            logger.warning(f"Received 503 on {url}. Retrying attempt {attempt + 1} of {retries} in 5 seconds...")
+                            time.sleep(5)
+                            continue
+                    return response
+                except Exception as e:
+                    if "503" in str(e) and attempt < retries - 1:
+                        url = args[1] if len(args) > 1 else 'unknown URL'
+                        logger.warning(f"Received 503 error on {url}. Retrying attempt {attempt + 1} of {retries} in 5 seconds...")
+                        time.sleep(5)
+                        continue
+                    raise
+
+        session.request = patched_request
+
         session.login()
         yield from log_status("Amazon login successful.")
 
