@@ -53,14 +53,11 @@ These instructions will get you a copy of the project up and running in a produc
      -e POSTGRES_PASSWORD=your_db_password \
      -e POSTGRES_DB=amazon_orders \
      -e POSTGRES_PORT=5432 \
-     -e ADMIN_USERNAME=admin \
-     -e ADMIN_PASSWORD=your_admin_password \
      -e ENCRYPTION_KEY=$(openssl rand -hex 32) \
      -e SECRET_KEY=$(openssl rand -hex 32) \
      -e JWT_SECRET_KEY=$(openssl rand -hex 32) \
      -e CAPSOLVER_API_KEY=<your_capsolver_api_key> \
-     -e APP_TIMEZONE=UTC \
-     -e DATA_DIR=/data/debug \
+     -e TZ=UTC \
      -d amazon-order-trends
    ```
 
@@ -72,13 +69,12 @@ These instructions will get you a copy of the project up and running in a produc
    - `SECRET_KEY`: A secret key used by Flask for session management and security.
    - `JWT_SECRET_KEY`: A secret key used for signing JSON Web Tokens for authentication.
    - `CAPSOLVER_API_KEY`: (Optional) Your API key for CapSolver, to automatically bypass AWS WAF captchas during ingestion.
-   - `APP_TIMEZONE`: (Optional) The timezone to use for the application (e.g., `America/New_York`). Defaults to `UTC`.
-   - `DATA_DIR`: (Optional) Directory path for storing debug and log outputs inside the container.
+   - `TZ`: (Optional) The timezone to use for the application (e.g., `America/New_York`). Defaults to `UTC`.
 
 ## Usage
 
 - **Access the application**: Open your web browser and navigate to `http://localhost:5001`.
-- **Login**: Use the admin credentials you configured in the environment variables to log in.
+- **Login**: Log in using the default admin credentials (username: `admin`, password: `changeme`). Please change your password upon initial login.
 - **Ingest Data**: To populate the database with your Amazon order data, you will need to run the ingestion script. The details of this process will be added here.
 
 ## Development

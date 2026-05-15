@@ -54,11 +54,11 @@ def check_scheduled_syncs(app):
     Runs every minute to check if any user has a scheduled sync matching the current time
     in the application's global timezone.
     """
-    tz_str = os.environ.get('APP_TIMEZONE', 'UTC')
+    tz_str = os.environ.get('TZ', 'UTC')
     try:
         tz = pytz.timezone(tz_str)
     except pytz.UnknownTimeZoneError:
-        app.logger.warning(f"Unknown timezone '{tz_str}' specified in APP_TIMEZONE. Defaulting to UTC.")
+        app.logger.warning(f"Unknown timezone '{tz_str}' specified in TZ. Defaulting to UTC.")
         tz = pytz.utc
 
     now_local = datetime.now(tz)

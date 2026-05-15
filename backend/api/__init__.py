@@ -178,23 +178,22 @@ def create_app(config_name=None):
 
     @app.cli.command("seed-admin")
     def seed_admin_command():
-        """Creates the initial admin user if it doesn't exist."""
+        """Creates the initial admin user if no users exist in the database."""
         try:
             with get_db_cursor(commit=True) as cur:
-                admin_user = os.environ.get("ADMIN_USERNAME", "admin")
-                admin_pass = os.environ.get("ADMIN_PASSWORD", "changeme")
-
-                cur.execute("SELECT id FROM users WHERE username = %s", (admin_user,))
+                cur.execute("SELECT 1 FROM users LIMIT 1")
                 if cur.fetchone() is None:
-                    app.logger.info(f"Creating initial admin user: '{admin_user}'")
+                    admin_user = "admin"
+                    admin_pass = "changeme"
+                    app.logger.info(f"No users found. Creating initial admin user: '{admin_user}'")
                     hashed_password = generate_password_hash(admin_pass)
                     cur.execute(
                         "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, 'admin')",
                         (admin_user, hashed_password)
                     )
-                    app.logger.info("Admin user created successfully.")
+                    app.logger.info("Initial admin user created successfully.")
                 else:
-                    app.logger.info("Admin user already exists.")
+                    app.logger.info("Users already exist. Skipping initial admin creation.")
         except Exception as e:
             app.logger.error(f"An error occurred during admin user seeding: {e}")
             raise

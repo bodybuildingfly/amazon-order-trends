@@ -151,7 +151,13 @@ def main(user_id, manual_days_override=None, debug=False):
         logging.getLogger("amazonorders").addHandler(debug_handler)
         logging.getLogger("amazonorders").setLevel(logging.DEBUG)
 
-    output_dir = os.environ.get('DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'output'))
+    # If /data exists (e.g. Docker volume mapping), use /data/debug
+    # Otherwise, fall back to the local ../output directory.
+    if os.path.exists('/data'):
+        output_dir = '/data/debug'
+    else:
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'output')
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
