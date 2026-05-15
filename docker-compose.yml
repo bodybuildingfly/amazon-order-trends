@@ -11,9 +11,11 @@ services:
       - ./backend:/app/backend
       - ./frontend:/app/frontend
       - /app/frontend/node_modules
+      - ./data:/data
     environment:
       # --- Add FLASK_APP to tell Flask where the app is ---
       - FLASK_APP=backend.api:create_app
+      - DATA_DIR=/data/debug
       - PYTHONPATH=/app
       - FLASK_ENV=development
       - POSTGRES_HOST=${POSTGRES_HOST}

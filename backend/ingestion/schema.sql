@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     amazon_otp_secret_key VARCHAR(255),
     discord_webhook_url TEXT,
     discord_notification_preference VARCHAR(20) DEFAULT 'off' NOT NULL,
+    is_debug_mode_enabled BOOLEAN DEFAULT FALSE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_user
         FOREIGN KEY(user_id)

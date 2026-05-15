@@ -51,7 +51,8 @@ def get_settings(user_id):
     with get_db_cursor() as cur:
         cur.execute(
             """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key,
-                      discord_webhook_url, discord_notification_preference
+                      discord_webhook_url, discord_notification_preference,
+                      is_debug_mode_enabled
                FROM user_settings WHERE user_id = %s""",
             (user_id,)
         )
@@ -59,7 +60,7 @@ def get_settings(user_id):
 
     if not settings_row: raise ValueError(f"Settings not found for user {user_id}.")
     
-    amazon_email, encrypted_password, amazon_otp_secret_key, webhook_url, notification_pref = settings_row
+    amazon_email, encrypted_password, amazon_otp_secret_key, webhook_url, notification_pref, is_debug_mode_enabled = settings_row
     
     if not amazon_email or not encrypted_password:
         raise ValueError("Amazon credentials are not fully configured.")
@@ -70,7 +71,8 @@ def get_settings(user_id):
         'AMAZON_PASSWORD': decrypted_password,
         'AMAZON_OTP_SECRET_KEY': amazon_otp_secret_key or None,
         'DISCORD_WEBHOOK_URL': webhook_url,
-        'DISCORD_NOTIFICATION_PREFERENCE': notification_pref or 'off'
+        'DISCORD_NOTIFICATION_PREFERENCE': notification_pref,
+        'IS_DEBUG_MODE_ENABLED': is_debug_mode_enabled
     }
 
 def extract_asin(url):
@@ -98,6 +100,19 @@ def main(user_id, manual_days_override=None, debug=False):
 
     error_occurred = False
     settings = {}
+
+    try:
+        initialize_fernet()
+        settings = get_settings(user_id)
+    except Exception as e:
+        logger.error(f"Failed to initialize settings: {e}")
+        yield "error", f"Initialization failed: {e}"
+        return
+
+    # Override debug if enabled in settings
+    if settings.get('IS_DEBUG_MODE_ENABLED'):
+        debug = True
+
     session = None
     debug_logs = []
     debug_handler = None
@@ -127,7 +142,7 @@ def main(user_id, manual_days_override=None, debug=False):
         logging.getLogger("amazonorders").addHandler(debug_handler)
         logging.getLogger("amazonorders").setLevel(logging.DEBUG)
 
-    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'output')
+    output_dir = os.environ.get('DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'output'))
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -138,9 +153,6 @@ def main(user_id, manual_days_override=None, debug=False):
     config = AmazonOrdersConfig(data=config_data)
 
     try:
-        initialize_fernet()
-        settings = get_settings(user_id)
-        
         # Wrapper for yielding status and logging it
         def log_status(message):
             yield from yield_and_log("status", message)
