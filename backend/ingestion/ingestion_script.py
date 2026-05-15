@@ -46,9 +46,10 @@ def decrypt_value(encrypted_bytes):
     return fernet.decrypt(bytes(encrypted_bytes)).decode('utf-8')
 
 def get_settings(user_id):
-    """Fetches, validates, and decrypts settings for a given user."""
+    """Fetches, validates, and decrypts settings for a given user, including checking global admin debug mode."""
     logger.info(f"Fetching settings for user_id: {user_id}...")
     with get_db_cursor() as cur:
+        # Fetch user settings
         cur.execute(
             """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key,
                       discord_webhook_url, discord_notification_preference,
@@ -58,6 +59,14 @@ def get_settings(user_id):
         )
         settings_row = cur.fetchone()
 
+        # Fetch admin global debug setting
+        cur.execute(
+            """SELECT is_debug_mode_enabled
+               FROM user_settings
+               WHERE user_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1)"""
+        )
+        admin_settings_row = cur.fetchone()
+        global_debug_mode = admin_settings_row[0] if admin_settings_row else False
     if not settings_row: raise ValueError(f"Settings not found for user {user_id}.")
     
     amazon_email, encrypted_password, amazon_otp_secret_key, webhook_url, notification_pref, is_debug_mode_enabled = settings_row
@@ -72,7 +81,7 @@ def get_settings(user_id):
         'AMAZON_OTP_SECRET_KEY': amazon_otp_secret_key or None,
         'DISCORD_WEBHOOK_URL': webhook_url,
         'DISCORD_NOTIFICATION_PREFERENCE': notification_pref,
-        'IS_DEBUG_MODE_ENABLED': is_debug_mode_enabled
+        'IS_DEBUG_MODE_ENABLED': is_debug_mode_enabled or global_debug_mode
     }
 
 def extract_asin(url):
