@@ -47,6 +47,7 @@ These instructions will get you a copy of the project up and running in a produc
    ```bash
    docker run --name amazon-order-trends-app \
      -p 5001:5001 \
+     -v /path/to/host/data:/data \
      -e POSTGRES_HOST=<your_postgres_host> \
      -e POSTGRES_USER=your_db_user \
      -e POSTGRES_PASSWORD=your_db_password \
@@ -55,10 +56,24 @@ These instructions will get you a copy of the project up and running in a produc
      -e ADMIN_USERNAME=admin \
      -e ADMIN_PASSWORD=your_admin_password \
      -e ENCRYPTION_KEY=$(openssl rand -hex 32) \
+     -e SECRET_KEY=$(openssl rand -hex 32) \
+     -e JWT_SECRET_KEY=$(openssl rand -hex 32) \
+     -e CAPSOLVER_API_KEY=<your_capsolver_api_key> \
+     -e APP_TIMEZONE=UTC \
+     -e DATA_DIR=/data/debug \
      -d amazon-order-trends
    ```
 
    Replace `<your_postgres_host>` with the IP address of your PostgreSQL container or server. If running the database container on the same Docker network, you can link them.
+   Replace `/path/to/host/data` with a local directory path to store debug output files, such as HTML error pages generated during ingestion.
+
+   **Important Environment Variables:**
+   - `ENCRYPTION_KEY`: A 32-byte hexadecimal string used for encrypting sensitive data (like Amazon passwords) in the database.
+   - `SECRET_KEY`: A secret key used by Flask for session management and security.
+   - `JWT_SECRET_KEY`: A secret key used for signing JSON Web Tokens for authentication.
+   - `CAPSOLVER_API_KEY`: (Optional) Your API key for CapSolver, to automatically bypass AWS WAF captchas during ingestion.
+   - `APP_TIMEZONE`: (Optional) The timezone to use for the application (e.g., `America/New_York`). Defaults to `UTC`.
+   - `DATA_DIR`: (Optional) Directory path for storing debug and log outputs inside the container.
 
 ## Usage
 
