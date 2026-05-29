@@ -17,6 +17,7 @@ import amazonorders.transactions
 from amazonorders.exception import AmazonOrdersError
 from amazonorders.conf import AmazonOrdersConfig
 from dotenv import load_dotenv
+import psycopg2.extras
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -294,19 +295,28 @@ def main(user_id, manual_days_override=None, debug=False):
                             VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (order_id) DO NOTHING;
                         """, (order.order_number, user_id, order.order_placed_date, order.grand_total, order.subscription_discount, order.recipient.name if order.recipient else None))
 
-                        for item in order.items:
-                            cur.execute("""
-                                INSERT INTO items (order_id, asin, full_title, link, thumbnail_url, quantity, price_per_unit, is_subscribe_and_save)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (order_id, full_title, price_per_unit) DO UPDATE SET
-                                    is_subscribe_and_save = EXCLUDED.is_subscribe_and_save,
-                                    thumbnail_url = EXCLUDED.thumbnail_url;
-                            """, (
-                                order.order_number, extract_asin(item.link), item.title,
-                                item.link,
-                                item.image_link,
-                                item.quantity or 1, item.price, is_subscribe_and_save_order
-                            ))
+                        if order.items:
+                            item_data = [
+                                (
+                                    order.order_number, extract_asin(item.link), item.title,
+                                    item.link,
+                                    item.image_link,
+                                    item.quantity or 1, item.price, is_subscribe_and_save_order
+                                )
+                                for item in order.items
+                            ]
+
+                            psycopg2.extras.execute_values(
+                                cur,
+                                """
+                                    INSERT INTO items (order_id, asin, full_title, link, thumbnail_url, quantity, price_per_unit, is_subscribe_and_save)
+                                    VALUES %s
+                                    ON CONFLICT (order_id, full_title, price_per_unit) DO UPDATE SET
+                                        is_subscribe_and_save = EXCLUDED.is_subscribe_and_save,
+                                        thumbnail_url = EXCLUDED.thumbnail_url;
+                                """,
+                                item_data
+                            )
                     except Exception as e:
                         yield from yield_and_log("error", f"Failed to process order {order.order_number} in DB: {e}")
 
