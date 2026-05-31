@@ -25,6 +25,16 @@ def add_tracked_item():
     if not url:
         return jsonify({"error": "URL is required"}), 400
 
+    from urllib.parse import urlparse
+    try:
+        parsed_url = urlparse(url)
+        # Allow amazon.com, www.amazon.com, and a.co (the amazon shortlink)
+        allowed_domains = ['amazon.com', 'www.amazon.com', 'a.co']
+        if parsed_url.netloc not in allowed_domains or parsed_url.scheme not in ['http', 'https']:
+            return jsonify({"error": "Invalid Amazon URL."}), 400
+    except Exception:
+        return jsonify({"error": "Invalid URL format."}), 400
+
     # Extract ASIN
     asin = extract_asin(url)
 

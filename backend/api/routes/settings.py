@@ -60,11 +60,21 @@ def get_settings():
         current_app.logger.error(f"Failed to get settings: {e}", exc_info=True)
         return jsonify({"error": "Failed to retrieve settings."}), 500
 
+def is_valid_discord_webhook(url):
+    """Validates that the provided URL is a valid Discord webhook."""
+    if not url:
+        return True # Optional field
+    return url.startswith('https://discord.com/api/webhooks/') or url.startswith('https://discordapp.com/api/webhooks/')
+
 @settings_bp.route('/api/settings/user', methods=['POST'])
 @jwt_required()
 def save_user_settings():
     data = request.get_json()
     current_user_id = get_jwt_identity()
+
+    price_webhook_url = data.get('price_change_notification_webhook_url')
+    if price_webhook_url and not is_valid_discord_webhook(price_webhook_url):
+        return jsonify({"error": "Invalid Discord webhook URL."}), 400
 
     try:
         fernet = get_fernet()
@@ -150,8 +160,11 @@ def save_admin_settings():
     data = request.get_json()
     current_user_id = get_jwt_identity()
     
+    discord_webhook_url = data.get('discord_webhook_url')
+    if discord_webhook_url and not is_valid_discord_webhook(discord_webhook_url):
+        return jsonify({"error": "Invalid Discord webhook URL."}), 400
+
     try:
-        discord_webhook_url = data.get('discord_webhook_url')
         discord_notification_preference = data.get('discord_notification_preference', 'off')
         is_debug_mode_enabled = data.get('is_debug_mode_enabled', False)
 
@@ -187,6 +200,9 @@ def test_webhook():
 
     if not webhook_url:
         return jsonify({"error": "Webhook URL is required"}), 400
+
+    if not is_valid_discord_webhook(webhook_url):
+        return jsonify({"error": "Invalid Discord webhook URL."}), 400
 
     from backend.api.services.notification_service import send_price_drop_notification
 
