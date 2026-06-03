@@ -64,7 +64,19 @@ def is_valid_discord_webhook(url):
     """Validates that the provided URL is a valid Discord webhook."""
     if not url:
         return True # Optional field
-    return url.startswith('https://discord.com/api/webhooks/') or url.startswith('https://discordapp.com/api/webhooks/')
+
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme != 'https':
+            return False
+        if parsed.netloc not in ['discord.com', 'discordapp.com']:
+            return False
+        if not parsed.path.startswith('/api/webhooks/'):
+            return False
+        return True
+    except Exception:
+        return False
 
 @settings_bp.route('/api/settings/user', methods=['POST'])
 @jwt_required()
