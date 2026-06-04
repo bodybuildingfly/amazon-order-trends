@@ -2,10 +2,12 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import check_password_hash
 from flask_jwt_extended import create_access_token
 from backend.shared.db import get_db_cursor
+from backend.api.extensions import limiter
 
 auth_bp = Blueprint('auth_bp', __name__)
 
 @auth_bp.route("/api/auth/login", methods=['POST'])
+@limiter.limit("5 per minute")
 def login():
     username = request.json.get("username", None)
     password = request.json.get("password", None)
