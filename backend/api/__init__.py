@@ -15,7 +15,7 @@ except ImportError:
 from flask import Flask, send_from_directory, jsonify
 from werkzeug.security import generate_password_hash
 from backend.api.config import config_by_name
-from backend.api.extensions import cors, jwt, scheduler
+from backend.api.extensions import cors, jwt, scheduler, limiter
 from backend.api.helpers.encryption import initialize_fernet
 from backend.shared.db import init_pool, get_db_cursor, close_pool
 
@@ -44,6 +44,7 @@ def create_app(config_name=None):
     cors.init_app(app)
     jwt.init_app(app)
     initialize_fernet(app)
+    limiter.init_app(app)
     
     # Initialize scheduler, but don't start it until the app is run
     scheduler.init_app(app)
