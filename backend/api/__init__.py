@@ -101,6 +101,15 @@ def create_app(config_name=None):
                 scheduler.start()
                 app.logger.info("Scheduler started (fcntl not available).")
 
+    # --- Security Headers ---
+    @app.after_request
+    def add_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        return response
+
     # --- Register Blueprints ---
     from .routes.auth import auth_bp
     from .routes.users import users_bp
