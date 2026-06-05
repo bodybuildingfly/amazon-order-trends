@@ -1,4 +1,4 @@
-## 2024-05-18 - [Add rate limiting to login endpoint]
-**Vulnerability:** Missing rate limiting on sensitive login endpoints allows brute-force attacks against user authentication.
-**Learning:** The application lacked any rate limiting logic. It was necessary to add Flask-Limiter. The `backend/api/extensions.py` and `__init__.py` provide a clean way to load global Flask extensions like Limiter before applying them to blueprints like auth.py.
-**Prevention:** Always implement rate limiting on authentication routes by default to establish basic protection against credential stuffing and brute-force attempts.
+## 2025-02-12 - Defense-in-Depth: Adding Security Headers
+**Vulnerability:** The application was missing standard security headers (e.g., X-Content-Type-Options, X-Frame-Options, Strict-Transport-Security), leaving it vulnerable to minor classes of attacks like MIME-sniffing and clickjacking.
+**Learning:** Even if a backend is primarily acting as an API, it is best practice to inject baseline security headers into every response.
+**Prevention:** Added a global `@app.after_request` handler in `backend/api/__init__.py` to automatically append security headers to all responses.
