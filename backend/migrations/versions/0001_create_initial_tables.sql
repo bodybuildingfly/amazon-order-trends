@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS orders (
     user_id UUID NOT NULL,
     order_placed_date DATE NOT NULL,
     grand_total NUMERIC(10, 2) NOT NULL,
+    refund_total NUMERIC(10, 2) DEFAULT 0.0,
     subscription_discount NUMERIC(10, 2),
     recipient_name VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -58,8 +59,9 @@ CREATE TABLE IF NOT EXISTS items (
     quantity INTEGER NOT NULL,
     price_per_unit NUMERIC(10, 2) NOT NULL,
     is_subscribe_and_save BOOLEAN DEFAULT FALSE,
+    is_refunded BOOLEAN DEFAULT FALSE,
     -- Add a unique constraint to prevent duplicate items per order
-    UNIQUE(order_id, full_title, price_per_unit)
+    UNIQUE(order_id, full_title)
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_asin ON items(asin);

@@ -68,22 +68,33 @@ const InteractiveDataTable = () => {
                             className="w-16 h-16 object-cover rounded-md"
                         />
                     </a>
-                    <a 
-                        href={row.original.link} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline font-medium"
-                        title={row.original.full_title}
-                    >
-                        {row.original.full_title}
-                    </a>
+                    <div>
+                        <a
+                            href={row.original.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline font-medium"
+                            title={row.original.full_title}
+                        >
+                            {row.original.full_title}
+                        </a>
+                        {row.original.is_refunded && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                Refunded
+                            </span>
+                        )}
+                    </div>
                 </div>
             ),
         },
         { 
             accessorKey: 'price_per_unit', 
             header: 'Price',
-            cell: info => `$${parseFloat(info.getValue()).toFixed(2)}`
+            cell: ({ row, getValue }) => (
+                <span className={row.original.is_refunded ? 'line-through text-text-muted' : ''}>
+                    ${parseFloat(getValue()).toFixed(2)}
+                </span>
+            )
         },
         { 
             accessorKey: 'order_placed_date', 

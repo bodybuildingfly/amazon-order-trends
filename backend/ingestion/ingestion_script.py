@@ -11,6 +11,38 @@ from datetime import date, datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from cryptography.fernet import Fernet
+import bs4
+
+def get_refund_info(parsed_html):
+    refunded_items = []
+    refund_total = 0.0
+    if not parsed_html:
+        return refunded_items, refund_total
+
+    soup = bs4.BeautifulSoup(str(parsed_html), 'html.parser')
+
+    # Extract refunded items
+    shipments = soup.select('div[data-component="shipments"]')
+    for shipment in shipments:
+        status_msg = shipment.select_one('.od-status-message span')
+        if status_msg and 'refund' in status_msg.text.lower():
+            items = shipment.select('div[data-component="itemTitle"] a.a-link-normal')
+            for item in items:
+                refunded_items.append(item.text.strip())
+
+    # Extract refund total
+    for row in soup.select('div.od-line-item-row'):
+        label_col = row.select_one('div.od-line-item-row-label')
+        if label_col and 'Refund Total' in label_col.text:
+            val_col = row.select_one('div.od-line-item-row-content')
+            if val_col:
+                val_str = val_col.text.strip().replace('$', '')
+                try:
+                    refund_total = float(val_str)
+                except ValueError:
+                    pass
+
+    return refunded_items, refund_total
 import amazonorders.session
 import amazonorders.orders
 import amazonorders.transactions
@@ -290,30 +322,35 @@ def main(user_id, manual_days_override=None, debug=False):
                     try:
                         is_subscribe_and_save_order = order.subscription_discount is not None
                         
+                        refunded_item_titles, refund_total = get_refund_info(order.parsed) if hasattr(order, 'parsed') and order.parsed else ([], 0.0)
+
                         cur.execute("""
-                            INSERT INTO orders (order_id, user_id, order_placed_date, grand_total, subscription_discount, recipient_name)
-                            VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (order_id) DO NOTHING;
-                        """, (order.order_number, user_id, order.order_placed_date, order.grand_total, order.subscription_discount, order.recipient.name if order.recipient else None))
+                            INSERT INTO orders (order_id, user_id, order_placed_date, grand_total, refund_total, subscription_discount, recipient_name)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (order_id) DO UPDATE SET refund_total = EXCLUDED.refund_total;
+                        """, (order.order_number, user_id, order.order_placed_date, order.grand_total, refund_total, order.subscription_discount, order.recipient.name if order.recipient else None))
 
                         if order.items:
-                            item_data = [
-                                (
+                            item_data = []
+                            for item in order.items:
+                                is_refunded = item.title in refunded_item_titles
+                                price = 0.0 if is_refunded else item.price
+                                item_data.append((
                                     order.order_number, extract_asin(item.link), item.title,
                                     item.link,
                                     item.image_link,
-                                    item.quantity or 1, item.price, is_subscribe_and_save_order
-                                )
-                                for item in order.items
-                            ]
+                                    item.quantity or 1, price, is_subscribe_and_save_order, is_refunded
+                                ))
 
                             psycopg2.extras.execute_values(
                                 cur,
                                 """
-                                    INSERT INTO items (order_id, asin, full_title, link, thumbnail_url, quantity, price_per_unit, is_subscribe_and_save)
+                                    INSERT INTO items (order_id, asin, full_title, link, thumbnail_url, quantity, price_per_unit, is_subscribe_and_save, is_refunded)
                                     VALUES %s
-                                    ON CONFLICT (order_id, full_title, price_per_unit) DO UPDATE SET
+                                    ON CONFLICT (order_id, full_title) DO UPDATE SET
+                                        price_per_unit = EXCLUDED.price_per_unit,
                                         is_subscribe_and_save = EXCLUDED.is_subscribe_and_save,
-                                        thumbnail_url = EXCLUDED.thumbnail_url;
+                                        thumbnail_url = EXCLUDED.thumbnail_url,
+                                        is_refunded = EXCLUDED.is_refunded;
                                 """,
                                 item_data
                             )

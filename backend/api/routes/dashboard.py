@@ -14,7 +14,7 @@ def get_dashboard_summary():
     WITH UserOrders AS (
         SELECT 
             order_id,
-            grand_total,
+            (grand_total - COALESCE(refund_total, 0.0)) AS net_total,
             DATE_TRUNC('month', order_placed_date) AS month
         FROM orders
         WHERE user_id = %s
@@ -22,14 +22,14 @@ def get_dashboard_summary():
     MonthlySpending AS (
         SELECT
             month,
-            SUM(grand_total) AS total_spending
+            SUM(net_total) AS total_spending
         FROM UserOrders
         GROUP BY month
         ORDER BY month
     ),
     TotalStats AS (
         SELECT
-            SUM(grand_total) AS total_spending,
+            SUM(net_total) AS total_spending,
             COUNT(order_id) AS total_orders
         FROM UserOrders
     )
