@@ -11,7 +11,6 @@ const AdminSettingsPage = () => {
     const [formData, setFormData] = useState({
         discord_webhook_url: '',
         discord_notification_preference: 'never',
-        is_debug_mode_enabled: false,
     });
     
     useEffect(() => {
@@ -22,7 +21,6 @@ const AdminSettingsPage = () => {
                 setFormData({
                     discord_webhook_url: settingsRes.data.discord_webhook_url || '',
                     discord_notification_preference: settingsRes.data.discord_notification_preference || 'never',
-                    is_debug_mode_enabled: settingsRes.data.is_debug_mode_enabled || false,
                 });
             } catch (err) {
                 if (err.response?.status !== 404) {
@@ -89,28 +87,6 @@ const AdminSettingsPage = () => {
                                     <option value="errors_only">Notify on Error</option>
                                     <option value="always">Notify on All Runs</option>
                                 </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr className="border-border opacity-50" />
-
-                    <div>
-                        <h3 className="text-lg font-medium text-text-primary mb-1">Advanced Settings</h3>
-                        <div className="mt-4 flex items-start">
-                            <div className="flex items-center h-5">
-                                <input
-                                    type="checkbox"
-                                    name="is_debug_mode_enabled"
-                                    id="is_debug_mode_enabled"
-                                    checked={formData.is_debug_mode_enabled}
-                                    onChange={handleFormChange}
-                                    className="focus:ring-primary h-4 w-4 text-primary border-gray-300 rounded"
-                                />
-                            </div>
-                            <div className="ml-3 text-sm">
-                                <label htmlFor="is_debug_mode_enabled" className="font-medium text-text-primary">Enable Debug Mode</label>
-                                <p className="text-text-muted">Enabling debug mode saves the raw HTML response to the configured `/data/debug` volume. This is helpful to troubleshoot ingestion issues such as 503 errors and CAPTCHA failures.</p>
                             </div>
                         </div>
                     </div>
