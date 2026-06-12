@@ -16,7 +16,6 @@ def get_settings():
             cur.execute(
                 """SELECT amazon_email, amazon_password_encrypted, amazon_otp_secret_key, 
                           discord_webhook_url, discord_notification_preference,
-                          is_debug_mode_enabled,
                           price_change_notification_webhook_url,
                           default_notification_threshold_type, default_notification_threshold_value,
                           is_auto_sync_enabled,
@@ -27,14 +26,13 @@ def get_settings():
             settings_row = cur.fetchone()
 
         if settings_row:
-            email, password_encrypted, otp, webhook_url, notification_pref, is_debug_mode_en, price_webhook_url, def_thresh_type, def_thresh_val, auto_sync_en, auto_sync_time = settings_row
+            email, password_encrypted, otp, webhook_url, notification_pref, price_webhook_url, def_thresh_type, def_thresh_val, auto_sync_en, auto_sync_time = settings_row
             return jsonify({
                 "is_configured": bool(email and password_encrypted),
                 "amazon_email": email or '',
                 "amazon_otp_secret_key": otp or '',
                 "discord_webhook_url": webhook_url or '',
                 "discord_notification_preference": notification_pref or 'off',
-                "is_debug_mode_enabled": bool(is_debug_mode_en),
                 "price_change_notification_webhook_url": price_webhook_url or '',
                 "default_notification_threshold_type": def_thresh_type or 'percent',
                 "default_notification_threshold_value": def_thresh_val,
@@ -49,7 +47,6 @@ def get_settings():
                 "amazon_otp_secret_key": '',
                 "discord_webhook_url": '',
                 "discord_notification_preference": 'off',
-                "is_debug_mode_enabled": False,
                 "price_change_notification_webhook_url": '',
                 "default_notification_threshold_type": 'percent',
                 "default_notification_threshold_value": None,
@@ -178,16 +175,14 @@ def save_admin_settings():
 
     try:
         discord_notification_preference = data.get('discord_notification_preference', 'off')
-        is_debug_mode_enabled = data.get('is_debug_mode_enabled', False)
 
         with get_db_cursor(commit=True) as cur:
             cur.execute("""
                 UPDATE user_settings SET
                     discord_webhook_url = %s,
-                    discord_notification_preference = %s,
-                    is_debug_mode_enabled = %s
+                    discord_notification_preference = %s
                 WHERE user_id = %s;
-            """, (discord_webhook_url, discord_notification_preference, is_debug_mode_enabled, current_user_id))
+            """, (discord_webhook_url, discord_notification_preference, current_user_id))
             if cur.rowcount == 0:
                 # If admin tries to save global settings but doesn't have a user_settings row yet
                 # We could insert one, but existing logic returned 404.
