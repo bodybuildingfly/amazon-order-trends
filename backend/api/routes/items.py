@@ -33,7 +33,7 @@ def get_all_items():
 
     # Construct the final queries
     query = f"""
-        SELECT i.full_title, i.link, i.thumbnail_url, i.asin, i.price_per_unit, o.order_placed_date
+        SELECT i.full_title, i.link, i.thumbnail_url, i.asin, i.price_per_unit, o.order_placed_date, i.is_refunded
         {query_from}
         {query_where}
         ORDER BY {sort_by} {sort_order}
@@ -89,7 +89,7 @@ def get_repeat_items():
         WITH RankedItems AS (
             SELECT
                 i.asin, i.full_title, i.link, i.thumbnail_url, i.price_per_unit, o.order_placed_date,
-                i.is_subscribe_and_save,
+                i.is_subscribe_and_save, i.is_refunded,
                 ROW_NUMBER() OVER(PARTITION BY i.asin ORDER BY o.order_placed_date DESC) as rn
             FROM items i
             JOIN orders o ON i.order_id = o.order_id
@@ -102,6 +102,7 @@ def get_repeat_items():
                 current.link,
                 current.thumbnail_url,
                 current.is_subscribe_and_save,
+                current.is_refunded,
                 current.price_per_unit AS price_current,
                 current.order_placed_date AS date_current,
                 p1.price_per_unit AS price_prev_1,
